@@ -1,0 +1,39 @@
+import os, sys, time
+import pyaved
+
+class RevMemEMU:
+    def aved_write32(self, addr, v):
+        self.aved.write32(addr, v)
+
+    def aved_read32(self, addr):
+        v = self.aved.read32(addr)
+        return v
+
+    def __init__(self, base=0x1100000, dev="b1:00.0",
+                 verbose = False, diaglevel = 1, logfn = ""):
+        self.verbose = verbose
+        self.base = base
+        
+        self.aved = pyaved.AVED()
+        self.aved.open(dev)
+
+        if len(logfn) > 0:
+            self.outputfn = logfn
+        else:
+            self.outputfn = "output.txt"
+
+        if os.path.exists(self.outputfn):
+            os.remove(self.outputfn)
+
+        self.writelog("FPGA Emulation Initialized!\n")
+
+    def checkOffset(self, offset, align=8):
+        assert (offset % align) == 0, f"offset should be aligned with {align} bytes : {offset}"
+
+    def writeWord(self, offset, data):
+        self.checkOffset(offset, align=4)
+        self.aved_write32(self.base + offset, data)
+
+    def readWord(self, offset):
+        self.checkOffset(offset, align=4)
+        return self.aved_read32(self.base + offset)

@@ -1,4 +1,4 @@
-from RevMemTB import *
+from RevMemEMU import *
 
 def rev32bits(x: int):
     x &= 0xFFFFFFFF
@@ -10,20 +10,18 @@ def rev32bits(x: int):
     return x & 0xFFFFFFFF
 
 async def validateRevWord(rev, addr, input):
-    v = await rev.readWord(0)
+    v = rev.readWord(0)
     ref = rev32bits(input)
 
     rev.writelog(f"{input:08x} => {v:08x}\n")
     
     assert v == ref, f"v={v:08x} ref={ref:08x}"
 
-@cocotb.test()
-async def run_test(dut):
-    rev = RevMemTB(dut)
-    await rev.setup()
+if __name__ == "__main__":
+    rev = RevMemEMU()
 
     addr = 0
     val = 0x1364e
-    await rev.writeWord(addr, val)
+    rev.writeWord(addr, val)
     
-    await validateRevWord(rev, addr, val)
+    validateRevWord(rev, addr, val)

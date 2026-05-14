@@ -10,7 +10,7 @@ from cocotbext.axi import AxiLiteBus, AxiLiteMaster, AxiLiteRam, AxiResp
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-class RevMemTB:
+class RevMemSIM:
     async def reset_dut(self, cycles=5):
         self.dut.s_axi_aresetn.value = 0  # assert (active-low)
         for _ in range(cycles):
@@ -59,15 +59,3 @@ class RevMemTB:
         b = await self.axi_master.read(addr, 4)
         v = int.from_bytes(b, byteorder="little")
         return v
-
-    async def expectWord(self, addr, refdata):
-        v = await self.readWord(addr)
-        assert v == refdata, f"Mismatch at 0x{addr:08x}: mem={v:08x} ref={refdata:08x}"
-
-    async def dumpWord(self, startaddr = 0, nwords = 1):
-        print(f"[Dumping {nwords} words from data memory starting at {startaddr:08x}]")
-        for a in range(nwords):
-            addr = a * 8
-            v = await self.readWord(addr)
-            self.writelog(f'{addr:08x} {v:08x}\n')
-        self.writelog("\n")

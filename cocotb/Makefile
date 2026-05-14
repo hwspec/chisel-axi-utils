@@ -13,7 +13,7 @@ $(SRCDIR)/$(HWMODULENAME).sv :
 
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
-	@$(MAKE) sim MODULE=run_test TOPLEVEL=$(TOPNAME)
+	@$(MAKE) sim MODULE=sim_simple TOPLEVEL=$(TOPNAME)
 	@cat output.txt
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
