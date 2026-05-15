@@ -9,9 +9,7 @@ class RevMemEMU:
         v = self.aved.read32(addr)
         return v
 
-    def __init__(self, base=0x1100000, dev="b1:00.0",
-                 verbose = False, diaglevel = 1, logfn = ""):
-        self.verbose = verbose
+    def __init__(self, base=0x1100000, dev="b1:00.0", logfn = ""):
         self.base = base
         
         self.aved = pyaved.AVED()
@@ -26,6 +24,11 @@ class RevMemEMU:
             os.remove(self.outputfn)
 
         self.writelog("FPGA Emulation Initialized!\n")
+        
+    def writelog(self, txt):
+        print(txt, end='')
+        with open(self.outputfn, "a")  as f:
+            f.write(txt)
 
     def checkOffset(self, offset, align=8):
         assert (offset % align) == 0, f"offset should be aligned with {align} bytes : {offset}"

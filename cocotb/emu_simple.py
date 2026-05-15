@@ -9,7 +9,7 @@ def rev32bits(x: int):
     x = ((x & 0x0000FFFF) << 16) | ((x >> 16) & 0x0000FFFF)
     return x & 0xFFFFFFFF
 
-async def validateRevWord(rev, addr, input):
+def validateRevWord(rev, addr, input):
     v = rev.readWord(0)
     ref = rev32bits(input)
 
@@ -17,11 +17,15 @@ async def validateRevWord(rev, addr, input):
     
     assert v == ref, f"v={v:08x} ref={ref:08x}"
 
+
 if __name__ == "__main__":
     rev = RevMemEMU()
 
+    
     addr = 0
     val = 0x1364e
     rev.writeWord(addr, val)
     
     validateRevWord(rev, addr, val)
+
+    rev.writelog("Done!!\n")

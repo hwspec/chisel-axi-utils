@@ -44,9 +44,6 @@ class RevMemSIM:
 
         self.writelog("Cocotb Test Initialized!\n")
 
-    def __del__(self):
-        self.writelog("Done!\n")
-        
     def writelog(self, txt):
         with open(self.outputfn, "a")  as f:
             f.write(txt)

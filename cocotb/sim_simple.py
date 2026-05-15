@@ -27,3 +27,5 @@ async def sim_simple(dut):
     await rev.writeWord(addr, val)
     
     await validateRevWord(rev, addr, val)
+
+    rev.writelog("Done!!\n")
