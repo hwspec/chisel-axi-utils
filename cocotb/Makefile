@@ -1,4 +1,7 @@
-#SIM ?= icarus
+#
+# This is Makefile for cocotb
+#
+
 SIM ?= verilator
 TOPLEVEL_LANG ?= verilog
 TOPNAME=user_accel_bd_wrapper
@@ -14,6 +17,11 @@ $(SRCDIR)/$(HWMODULENAME).sv :
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
 	@$(MAKE) sim MODULE=sim_simple TOPLEVEL=$(TOPNAME)
+	@echo -e "\n[Output]"
 	@cat output.txt
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+clean::
+	rm -f output.txt results.xml *.vcd
+	rm -rf __pycache__
