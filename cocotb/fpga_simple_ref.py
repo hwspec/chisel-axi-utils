@@ -1,4 +1,4 @@
-from RevMemEMU import *
+from RevMemFPGA import RevMemFPGA
 
 def rev32bits(x: int):
     x &= 0xFFFFFFFF
@@ -17,11 +17,9 @@ def validateRevWord(rev, addr, input):
     
     assert v == ref, f"v={v:08x} ref={ref:08x}"
 
+def main():
+    rev = RevMemFPGA()
 
-if __name__ == "__main__":
-    rev = RevMemEMU()
-
-    
     addr = 0
     val = 0x1364e
     rev.writeWord(addr, val)
@@ -29,3 +27,6 @@ if __name__ == "__main__":
     validateRevWord(rev, addr, val)
 
     rev.writelog("Done!!\n")
+
+if __name__ == "__main__":
+    main()

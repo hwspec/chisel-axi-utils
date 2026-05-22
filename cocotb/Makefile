@@ -11,17 +11,18 @@ VERILOG_SOURCES += $(SRCDIR)/user_accel_bd_wrapper.v $(SRCDIR)/mem_128x32.sv $(S
 WAVES = 1
 EXTRA_ARGS += --trace --trace-structs
 
-$(SRCDIR)/$(HWMODULENAME).sv :
-	(cd ../ ; sbt "runMain axiexamples.Axi4Lite32RevMem")
-
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
 	@$(MAKE) sim MODULE=sim_simple TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
 	@cat output.txt
 
+$(SRCDIR)/$(HWMODULENAME).sv :
+	(cd ../ ; sbt "runMain axiexamples.Axi4Lite32RevMem")
+
+
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 clean::
-	rm -f output.txt results.xml *.vcd
+	rm -f output.txt results.xml *.vcd fpga_simple.py
 	rm -rf __pycache__
