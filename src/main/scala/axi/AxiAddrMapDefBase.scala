@@ -24,11 +24,17 @@ trait AxiAddrMapBase {
   lazy val axiaddrmap: Map[String, Int] =
     addrMapEntries.map(r => r.name -> r.addr).toMap
 
-  def writeAddrFile(filename: String): Unit = {
+  def writeAddrFile(filename: String, constmap: Option[Map[String,Long]] = None): Unit = {
     val out = new PrintWriter(filename)
     try {
       addrMapEntries.foreach { r =>
         out.println(f"${r.name}%-20s 0x${r.addr}%08x")
+      }
+      constmap match {
+        case Some(cm) => cm.foreach { e =>
+          out.println(f"${e._1}%-20s 0x${e._2}%08x")
+        }
+        case None =>
       }
     } finally {
       out.close()

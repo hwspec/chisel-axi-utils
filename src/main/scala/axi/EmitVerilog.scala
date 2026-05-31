@@ -36,8 +36,9 @@ object EmitVerilog {
                                             "--lowering-options=disallowLocalVariables,disallowPackedArrays",
                                             "--verilog",
                                           ),
-                                          opts : Map[String, String] = Map.empty,
-                                          addrmap : Option[AxiAddrMapBase] = None
+                                          opts : Map[String, String] = Map("vivado" -> "v80", "axiwrapper" -> "bd"),
+                                          addrmap : Option[AxiAddrMapBase] = None,
+                                          constmap : Option[Map[String, Long]] = None
                                          ) : Unit = {
     val topname = implicitly[ClassTag[T]].runtimeClass.getSimpleName
     val targetdir = "generated/" + topname
@@ -61,7 +62,7 @@ object EmitVerilog {
       VivadoScript.generate(flist,  topname, targetdir, opts("vivado"))
     }
     addrmap match {
-      case Some(am) => am.writeAddrFile(targetdir + "/addrmap.txt")
+      case Some(am) => am.writeAddrFile(targetdir + "/addrmap.txt", constmap)
       case None =>
     }
   }

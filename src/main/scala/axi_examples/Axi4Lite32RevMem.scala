@@ -114,7 +114,6 @@ class Axi4Lite32RevMem(nwords: Int = 128, AxiAddrBW: Int = 32) extends Module
 }
 
 object Axi4Lite32RevMem extends App {
-
   import axi.EmitVerilog
   EmitVerilog.generate(new Axi4Lite32RevMem())
 }

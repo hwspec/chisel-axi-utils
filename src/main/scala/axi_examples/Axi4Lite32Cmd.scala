@@ -9,9 +9,9 @@ import firrtl.ir.BundleType
 case object CmdAXIDef extends AxiAddrMapBase {
   // definition to export
   val addrMapEntries = Seq(
-    AddrMapEntry("CONST1_read_addr", 0x0),
-    AddrMapEntry("CONST2_read_addr", 0x4),
-    AddrMapEntry("RESET_write_addr", 0x8),
+    AddrMapEntry("const1_read_addr", 0x0),
+    AddrMapEntry("const2_read_addr", 0x4),
+    AddrMapEntry("reset_write_addr", 0x8),
     AddrMapEntry("dut_write_addr",   0x10),
     AddrMapEntry("dut_read_addr",    0x14),
   )
@@ -100,7 +100,7 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
 
     when(!fullWrite) { // support full write only for this example
       bresp := SLVERR.U
-    }.elsewhen(a === axiaddrmap("RESET_write_addr").U) {
+    }.elsewhen(a === axiaddrmap("reset_write_addr").U) {
       softResetReg := true.B
       resetCounterReg := RESET_CYCLES.U
       bresp := OKAY.U
@@ -148,10 +148,10 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
 
     val rstate = WireDefault(RState.READY2READ)
 
-    when(araddr === axiaddrmap("CONST1_read_addr").U) {
+    when(araddr === axiaddrmap("const1_read_addr").U) {
       rdataReg := const1.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("CONST2_read_addr").U) {
+    }.elsewhen(araddr === axiaddrmap("const2_read_addr").U) {
       rdataReg := const2.U
       rstate := RState.COMPLETED
     }.elsewhen(araddr === axiaddrmap("dut_read_addr").U) {
@@ -177,8 +177,10 @@ object Axi4Lite32Cmd extends App {
   val const1 : Long = 0xdeadbeefL // module id
   val const2 : Long = githash()   // return githash id (the first 8 chars)
 
- EmitVerilog.generate(new Axi4Lite32Cmd(const1 = const1, const2 = const2, debugprint=true),
-   opts = Map("vivado" -> "v80", "axiwrapper" -> "bd"),
-   addrmap = Some(CmdAXIDef)
+  val consts = Map("const1" -> const1, "const2" -> const2)
+ EmitVerilog.generate(
+   new Axi4Lite32Cmd(const1 = const1, const2 = const2, debugprint=true),
+   addrmap = Some(CmdAXIDef),
+   constmap = Some(consts)
  )
 }

@@ -1,0 +1,91 @@
+import os, sys, random
+from types import SimpleNamespace
+
+import cocotb_test.simulator, pytest
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import RisingEdge, Timer
+from cocotb.regression import TestFactory
+from cocotbext.axi import AxiLiteBus, AxiLiteMaster, AxiLiteRam, AxiResp
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+class CmdSIM:
+    async def reset_dut(self, cycles=5):
+        self.dut.s_axi_aresetn.value = 0  # assert (active-low)
+        for _ in range(cycles):
+            await RisingEdge(self.dut.s_axi_aclk)
+            self.dut.s_axi_aresetn.value = 1  # deassert
+        for _ in range(2):
+            await RisingEdge(self.dut.s_axi_aclk)
+
+    async def setup(self):
+        cocotb.start_soon(Clock(self.dut.s_axi_aclk, 10, units="ns").start())
+
+        bus = AxiLiteBus.from_prefix(self.dut, "S_AXI")
+        self.axi_master = AxiLiteMaster(
+            bus,
+            self.dut.s_axi_aclk,        # lower-case clock
+            self.dut.s_axi_aresetn,     # lower-case reset
+            reset_active_level=0   # because aresetn is active-low
+        )
+        await self.reset_dut()
+
+    def readAddrMap(self):
+        fn = os.getenv("ADDRMAPFN")
+        print(fn)
+        kv = {}
+        try:
+            with open(fn) as f:
+                while True:
+                    l = f.readline()
+                    if not l:
+                        break
+                    t = l.split()
+                    if len(t) == 2:
+                        k = t[0]
+                        v = int(t[1],16)
+                        kv[k] = v
+        except FileNotFoundError:
+            print(f"File not found: {fn}")
+        print(kv)
+        return SimpleNamespace(**kv)
+        
+    def __init__(self, dut, logfn = ""):
+        self.dut = dut
+
+        self.addrmap = self.readAddrMap()
+        
+        if len(logfn) > 0:
+            self.outputfn = logfn
+        else:
+            self.outputfn = "output.txt"
+
+        if os.path.exists(self.outputfn):
+            os.remove(self.outputfn)
+
+        self.writelog("Cocotb Test Initialized!\n")
+
+    def writelog(self, txt):
+        with open(self.outputfn, "a")  as f:
+            f.write(txt)
+
+    async def writeWord(self, addr, data):
+        b = bytearray(data.to_bytes(4, byteorder="little"))
+        await self.axi_master.write(addr, b)
+
+    async def readWord(self, addr):
+        b = await self.axi_master.read(addr, 4)
+        v = int.from_bytes(b, byteorder="little")
+        return v
+
+    # for convenience
+    async def softreset(self):
+        await self.writeWord(self.addrmap.reset_write_addr, 1)
+
+    async def writeDut(self, val):
+        await self.writeWord(self.addrmap.dut_write_addr, val)
+
+    async def readDut(self):
+        v = await self.readWord(self.addrmap.dut_read_addr)
+        return v

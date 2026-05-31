@@ -6,6 +6,12 @@ This repository provides practical building blocks for working with AXI
 protocols without aiming for full specification completeness. The focus
 is simplicity, clarity, and usability in real designs.
 
+Please look at the following files that can be used as templates for your project:
+
+- `src/main/scala/axi_examples/Axi4Lite32Cmd.scala`: a Chisel module example for bridging with your device under test (DUT). It includes soft reset logic.
+- `src/test/scala/axi_examples/Axi4Lite32CmdSpec.scala`: a Chisel testbench for `Axi4Lite32Cmd`.
+- `tests/Cmd/{CmdSim.py, sim_simple.py, Makefile}`: a cocotb testbench for `Axi4Lite32Cmd`. This testbench can be converted to an FPGA testbench on AMD V80 AVED (modified version) without modification.
+
 Currently, the repository includes:
 
 -   **AXI4-Lite support**
