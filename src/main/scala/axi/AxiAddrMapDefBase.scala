@@ -12,11 +12,16 @@ trait AxiAddrMapBase {
         throw new RuntimeException(f"Error: not aligned with 4-byte. ${e.name} 0x${e.addr}%x")
       }
     }
+    val addrs = a.map(_.addr)
+    val duplicates = addrs.diff(addrs.distinct)
+    if (duplicates.nonEmpty) {
+      throw new RuntimeException(f"Error: duplicate addresses: ${duplicates.map(a => f"0x$a%x").mkString(", ")}")
+    }
   }
 
   def addrMapEntries : Seq[AddrMapEntry]
 
-  lazy val addr: Map[String, Int] =
+  lazy val axiaddrmap: Map[String, Int] =
     addrMapEntries.map(r => r.name -> r.addr).toMap
 
   def writeAddrFile(filename: String): Unit = {
@@ -29,10 +34,15 @@ trait AxiAddrMapBase {
       out.close()
     }
   }
+
+  def githash() : Long = {
+      import scala.sys.process._
+    val githashstr = "git rev-parse HEAD".!!.trim
+    val first8 = githashstr.take(8)
+    val githash: Long = java.lang.Long.parseUnsignedLong(first8, 16)
+    githash
+  }
 }
-
-
-
 
 object Main {
   object TestAMDef extends AxiAddrMapBase {
@@ -47,8 +57,10 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
+    println(s"githash=${TestAMDef.githash()}")
+
     val key = "CONST2_read_addr"
-    val const1 = TestAMDef.addr(key)
+    val const1 = TestAMDef.axiaddrmap(key)
     println(f"${key} = 0x${const1}%08x")
 
     val fn = "test_axi_def.txt"

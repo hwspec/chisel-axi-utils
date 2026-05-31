@@ -43,7 +43,7 @@ class AxiLite(AddrBW: Int = 32, DataBW: Int = 32) extends Bundle {
 
 class AxiLite32(AddrBW: Int = 32) extends AxiLite(AddrBW, 32)
 
-class AxiLite32IO(addrW: Int) extends Bundle {
+class AxiLite32IO(addrW: Int = 32) extends Bundle {
   val AXI = new AxiLite32(addrW)
 }
 
