@@ -3,14 +3,75 @@
 A lightweight set of AXI utilities written in **Chisel**.
 
 This repository provides practical building blocks for working with AXI
-protocols without aiming for full specification completeness. The focus
-is simplicity, clarity, and usability in real designs.
+protocols, without aiming for full specification completeness. The focus
+is on simplicity, clarity, and usability in real designs.
+
+It includes AXI usage examples that can serve as starting templates for your
+own designs, along with examples of both Chisel testbenches and cocotb-based
+integration testbenches. Experimentally, the cocotb testbench can be converted
+into an FPGA testbench without modification, targeting the AMD Alveo V80 FPGA
+with a modified AVED environment.
+
+Note: Instructions for testing on the V80 FPGA are not documented yet, but
+will be provided soon.
+
+### Dependencies
+
+#### Linux distro
+
+We have tested it with Ubuntu 24.04.4 LTS and Fedora 41. We believe that any newer major Linux distro works.
+
+#### JDK 8 or newer
+
+We recommend LTS releases Java 8 and Java 11. You can install the JDK as your operating system recommends, or use the prebuilt binaries from [AdoptOpenJDK](h\
+ttps://adoptopenjdk.net/).
+
+#### SBT
+
+SBT is the most common build tool in the Scala community. You can download it [here](https://www.scala-sbt.org/download.html).
+
+#### Verilator
+
+The Chisel unit tests require Verilator installed. Install it or build
+it locally:
+
+```bash
+git clone https://github.com/verilator/verilator.git && cd verilator
+git checkout tags/v5.044 -b v5.044build
+autoconf
+./configure --prefix=__INSTALLDIR__  # replace __INSTALLDIR__
+make
+make install
+```
+
+#### cocotb
+
+Requires Python 3.8+.
+
+Create a Python virtual environment and install required packages:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+```
+
+Deactivate the environment when finished:
+```bash
+deactivate
+```
+
+
+## Examples
 
 Please look at the following files that can be used as templates for your project:
 
 - `src/main/scala/axi_examples/Axi4Lite32Cmd.scala`: a Chisel module example for bridging with your device under test (DUT). It includes soft reset logic.
 - `src/test/scala/axi_examples/Axi4Lite32CmdSpec.scala`: a Chisel testbench for `Axi4Lite32Cmd`.
 - `tests/Cmd/{CmdSim.py, sim_simple.py, Makefile}`: a cocotb testbench for `Axi4Lite32Cmd`. This testbench can be converted to an FPGA testbench on AMD V80 AVED (modified version) without modification.
+
+## Descriptions
 
 Currently, the repository includes:
 
@@ -94,3 +155,11 @@ Planned additions:
 -   AXI4-Stream utilities
 -   Partial AXI4-Full support
 -   Additional adapters and helper components
+
+
+
+## Contact
+
+For questions, bug reports, or feature requests, please open an issue
+on GitHub. For general discussion, please use GitHub Discussions.
+
