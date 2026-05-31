@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // See LICENSE file for details.
-package rtlgen
+package axi
 
-import chisel3._
 import _root_.circt.stage.ChiselStage
+import chisel3._
 
 import java.io.PrintWriter
 import java.nio.file.attribute.PosixFilePermissions

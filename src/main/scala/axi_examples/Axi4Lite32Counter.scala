@@ -88,6 +88,7 @@ class Axi4Lite32Counter(AxiAddrBW: Int = 32) extends Module
 }
 
 object Axi4Lite32Counter extends App {
-  import rtlgen.EmitVerilog
+
+  import axi.EmitVerilog
   EmitVerilog.generate(new Axi4Lite32Counter())
 }

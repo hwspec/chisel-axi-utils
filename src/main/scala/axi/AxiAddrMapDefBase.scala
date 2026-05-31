@@ -1,0 +1,58 @@
+package axi
+
+import java.io.PrintWriter
+
+case class AddrMapEntry(name: String, addr: Int)
+
+trait AxiAddrMapBase {
+  // a quick sanity check 4-byte aligned
+  def checkaddr(a : Seq[AddrMapEntry]) : Unit = {
+    a.foreach { e =>
+      if( (e.addr%4) > 0 ) {
+        throw new RuntimeException(f"Error: not aligned with 4-byte. ${e.name} 0x${e.addr}%x")
+      }
+    }
+  }
+
+  def addrMapEntries : Seq[AddrMapEntry]
+
+  lazy val addr: Map[String, Int] =
+    addrMapEntries.map(r => r.name -> r.addr).toMap
+
+  def writeAddrFile(filename: String): Unit = {
+    val out = new PrintWriter(filename)
+    try {
+      addrMapEntries.foreach { r =>
+        out.println(f"${r.name}%-20s 0x${r.addr}%08x")
+      }
+    } finally {
+      out.close()
+    }
+  }
+}
+
+
+
+
+object Main {
+  object TestAMDef extends AxiAddrMapBase {
+    // definition to export
+    val addrMapEntries = Seq(
+      AddrMapEntry("CONST1_read_addr", 0x0),
+      AddrMapEntry("CONST2_read_addr", 0x4),
+    )
+    checkaddr(addrMapEntries)
+
+    val RESET_CYCLES = 8   // internal definition
+  }
+
+  def main(args: Array[String]): Unit = {
+    val key = "CONST2_read_addr"
+    val const1 = TestAMDef.addr(key)
+    println(f"${key} = 0x${const1}%08x")
+
+    val fn = "test_axi_def.txt"
+    TestAMDef.writeAddrFile(fn)
+    println(s"Generated ${fn}")
+  }
+}

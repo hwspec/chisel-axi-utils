@@ -1,4 +1,5 @@
-package rtlgen
+package axi
+
 import java.io.PrintWriter
 import java.nio.file.attribute.PosixFilePermissions
 import java.nio.file.{Files, Paths}
