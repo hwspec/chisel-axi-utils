@@ -20,7 +20,7 @@ test : $(SRCDIR)/$(HWMODULENAME).sv
 	@cat output.txt
 
 $(SRCDIR)/$(HWMODULENAME).sv :
-	(cd ../../ ; sbt "runMain axiexamples.$(HWMODULENAME)")
+	(cd ../../ ; sbt "runMain axi_examples.$(HWMODULENAME)")
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
