@@ -1,19 +1,54 @@
 package axi_examples
 
+//
+// This example buffers image rows written through AXI4-Lite and injects them
+// into a DUT at one row per cycle.
+//
+// Each image row has:
+//
+//   ROW_BITS = W * P
+//
+// Since ROW_BITS is usually wider than the AXI4-Lite data width, the host fills
+// one row using multiple AXI4-Lite writes:
+//
+//   N_WRITES = ceil(ROW_BITS / AXI_DATA_BITS)
+//
+// The host writes these words into a row staging register. After one complete
+// row is staged, the host writes a commit register, which enqueues the staged
+// row into the input row FIFO.
+//
+// This sequence is repeated until the FIFO contains the required input rows:
+//
+//   fill row staging register
+//   commit row into FIFO
+//   repeat
+//
+// After the FIFO is prepared, the host writes an injection-start register.
+// The injector then dequeues one FIFO entry per cycle and drives the DUT with
+// one complete row per cycle.
+//
+// This separates slow AXI4-Lite row loading from fast row-per-cycle DUT input.
+//
+
 import axi._
 import axi.AxiLiteResp._
 import chisel3._
 import chisel3.util._
 import firrtl.ir.BundleType
 
-case object CmdAXIDef extends AxiAddrMapBase {
+case object TestQAXIDef extends AxiAddrMapBase {
   // definition to export
   val addrMapEntries = Seq(
     AddrMapEntry("const1_read_addr", 0x0),
     AddrMapEntry("const2_read_addr", 0x4),
     AddrMapEntry("reset_write_addr", 0x8),
-    AddrMapEntry("dut_write_addr",   0x10),
-    AddrMapEntry("dut_read_addr",    0x14),
+
+    AddrMapEntry("stage_write_base_addr", 0x100), // up to 4096 bits per row. e.g., 0x108 means 64-bit position. 
+    AddrMapEntry("rowid_write_addr", 0x300),
+
+    AddrMapEntry("startfeed_write_addr", 0x400), // start feeding data after filling up the input fifo
+
+    AddrMapEntry("outq_read_addr", 0x500)
   )
   checkaddr(addrMapEntries) // sanity check
 
@@ -21,27 +56,53 @@ case object CmdAXIDef extends AxiAddrMapBase {
   val RESET_CYCLES = 8 // soft reset
 }
 
-// replace Dut with your actual dut
-class Dut(bw : Int = 32) extends Module {
+// dut: an image processor example 
+//
+// The DUT consumes one image row per cycle.
+// For each valid row, it binarizes pixels using a threshold,
+// counts the number of 1s, and accumulates the count.
+//
+// firstrow resets the accumulation with the current row count.
+// Otherwise, the current row count is added to the running total.
+class BinImageCount(npxs: Int, pxbw : Int) extends Module {
   val io = IO(new Bundle {
-    val in  = Input(UInt(bw.W))
-    val valid = Input(Bool())
-    val out = Output(UInt(bw.W))
+    val in        = Input(Vec(npxs, UInt(pxbw.W)))
+    val firstrow  = Input(Bool())
+    val threshold = Input(UInt(pxbw.W))
+    val valid     = Input(Bool())
+    
+    val out = Output(UInt(32.W))
   })
-  val valReg = RegInit(0.U(bw.W))
-  when(io.invalid) {
-    valReg := io.in
+  
+  val bin = Wire(Vec(npxs, Bool()))
+  for (i <- 0 until npxs) {
+    bin(i) := io.in(i) >= io.threshold
   }
-  io.out := valReg
+  val rowPopCount = PopCount(bin.asUInt)
+
+  val totalPopCountReg = RegInit(0.U(32.W))
+  io.out := totalPopCountReg
+  
+  when(io.valid) {
+    when(io.firstrow) {
+      totalPopCountReg := rowPopCount
+    }.otherwise {
+      totalPopCountReg :=  totalPopCountReg + rowPopCount
+    }
+  }
 }
 
-class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw: Int = 32,
-                     debugprint: Boolean = false)
+
+class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, 
+                       bw: Int = 32,
+                       npxs : Int = 128,
+                       pxbw : Int = 12,
+                       debugprint: Boolean = false)
   extends Module with HasAxiLite32IO {
 
   val S = IO(new AxiLite32IO())
 
-  import CmdAXIDef._
+  import TestQAXIDef._
 
   // cycle counter for convenience
   val (cycles, wrap) = Counter(true.B, 1 << 16)
@@ -58,11 +119,51 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
 
   // instantiate your dut here
   val dut = withReset(combinedReset) {
-    Module(new Dut())
+    Module(new BinImageCount(npxs, pxbw))
   }
   dut.io.in := 0.U
   dut.io.valid := false.B
 
+  class RowData(npxs: Int, pxbw: Int) extends Bundle {
+    val rowid  = UInt(8.W)
+    val pixels = Vec(npxs, UInt(pxbw.W)) 
+  }
+  val stagingPixelsReg = RegInit(0.U((npxs*pxbw).W))
+  val stagingRowidReg = RegInit(0.U(8.W))
+  
+  val inputQ = Module(new Queue(new RowData(npxs, pxbw), entries = 256))
+  inputQ.io.enq.valid := false.B
+  inputQ.io.enq.bits := 0.U
+  inputQ.io.deq.ready := false.B
+
+  val outputQ = Module(new Queue(UInt(32.W), entries = 32))
+  outputQ.io.enq.valid := false.B
+  outputQ.io.enq.bits := 0.U
+  outputQ.io.deq.ready := false.B
+  
+  object InputFeedSeq extends ChiselEnum {
+    val Idle, Feeding, Completed = Value
+  }
+  val inputFeedStatusReg = RegInit(InputFeedSeq.Idle)
+  val imageid = RegInit(0.U(8.W))
+  
+  when(inputFeedStatusReg === InputFeedSeq.Feeding) {
+    when(inputQ.io.count === 0.U) {
+      inputFeedStatusReg := InputFeedSeq.Completed
+    }.otherwise {
+
+      
+    }
+  }.elsewhen(inputFeedStatusReg === InputFeedSeq.Completed) {
+    outputQ.io.enq.valid := true.B
+    when(outputQ.io.enq.ready) {
+      outputQ.io.enq.bits := dut.io.out
+      inputFeedStatusReg := InputFeedSeq.Idle
+    }
+  }
+
+
+  
   // -----------------------------
   // AXI-lite regs
   // -----------------------------
@@ -172,15 +273,15 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
   }
 }
 
-object Axi4Lite32Cmd extends App {
-  import CmdAXIDef._
+object Axi4Lite32TestQ extends App {
+  import TestQAXIDef._
   val const1 : Long = 0xdeadbeefL // module id
   val const2 : Long = githash()   // return githash id (the first 8 chars)
 
   val consts = Map("const1" -> const1, "const2" -> const2)
  EmitVerilog.generate(
-   new Axi4Lite32Cmd(const1 = const1, const2 = const2, debugprint=true),
-   addrmap = Some(CmdAXIDef),
+   new Axi4Lite32TestQ(const1 = const1, const2 = const2, debugprint=true),
+   addrmap = Some(TestQAXIDef),
    constmap = Some(consts)
  )
 }
