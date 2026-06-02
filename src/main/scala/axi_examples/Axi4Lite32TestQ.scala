@@ -43,7 +43,7 @@ case object TestQAXIDef extends AxiAddrMapBase {
     AddrMapEntry("const2_read_addr", 0x4),
     AddrMapEntry("reset_write_addr", 0x8),
 
-    AddrMapEntry("stage_write_base_addr", 0x100), // up to 4096 bits per row. e.g., 0x108 means 64-bit position. 
+    AddrMapEntry("stage_write_base_addr", 0x100), // up to 4096 bits per row. e.g., 0x108 means 64-bit position.
     AddrMapEntry("rowid_write_addr", 0x300),
 
     AddrMapEntry("startfeed_write_addr", 0x400), // start feeding data after filling up the input fifo
@@ -56,7 +56,7 @@ case object TestQAXIDef extends AxiAddrMapBase {
   val RESET_CYCLES = 8 // soft reset
 }
 
-// dut: an image processor example 
+// dut: an image processor example
 //
 // The DUT consumes one image row per cycle.
 // For each valid row, it binarizes pixels using a threshold,
@@ -70,10 +70,10 @@ class BinImageCount(npxs: Int, pxbw : Int) extends Module {
     val firstrow  = Input(Bool())
     val threshold = Input(UInt(pxbw.W))
     val valid     = Input(Bool())
-    
+
     val out = Output(UInt(32.W))
   })
-  
+
   val bin = Wire(Vec(npxs, Bool()))
   for (i <- 0 until npxs) {
     bin(i) := io.in(i) >= io.threshold
@@ -82,7 +82,7 @@ class BinImageCount(npxs: Int, pxbw : Int) extends Module {
 
   val totalPopCountReg = RegInit(0.U(32.W))
   io.out := totalPopCountReg
-  
+
   when(io.valid) {
     when(io.firstrow) {
       totalPopCountReg := rowPopCount
@@ -93,7 +93,7 @@ class BinImageCount(npxs: Int, pxbw : Int) extends Module {
 }
 
 
-class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, 
+class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
                        bw: Int = 32,
                        npxs : Int = 128,
                        pxbw : Int = 12,
@@ -126,11 +126,11 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
   class RowData(npxs: Int, pxbw: Int) extends Bundle {
     val rowid  = UInt(8.W)
-    val pixels = Vec(npxs, UInt(pxbw.W)) 
+    val pixels = Vec(npxs, UInt(pxbw.W))
   }
   val stagingPixelsReg = RegInit(0.U((npxs*pxbw).W))
   val stagingRowidReg = RegInit(0.U(8.W))
-  
+
   val inputQ = Module(new Queue(new RowData(npxs, pxbw), entries = 256))
   inputQ.io.enq.valid := false.B
   inputQ.io.enq.bits := 0.U
@@ -140,19 +140,19 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   outputQ.io.enq.valid := false.B
   outputQ.io.enq.bits := 0.U
   outputQ.io.deq.ready := false.B
-  
+
   object InputFeedSeq extends ChiselEnum {
     val Idle, Feeding, Completed = Value
   }
   val inputFeedStatusReg = RegInit(InputFeedSeq.Idle)
   val imageid = RegInit(0.U(8.W))
-  
+
   when(inputFeedStatusReg === InputFeedSeq.Feeding) {
     when(inputQ.io.count === 0.U) {
       inputFeedStatusReg := InputFeedSeq.Completed
     }.otherwise {
 
-      
+
     }
   }.elsewhen(inputFeedStatusReg === InputFeedSeq.Completed) {
     outputQ.io.enq.valid := true.B
@@ -163,7 +163,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   }
 
 
-  
+
   // -----------------------------
   // AXI-lite regs
   // -----------------------------
