@@ -60,43 +60,52 @@ case object TestQAXIDef extends AxiAddrMapBase {
 //
 // The DUT consumes one image row per cycle.
 // For each valid row, it binarizes pixels using a threshold,
-// counts the number of 1s, and accumulates the count.
+// counts the number of 1s in the row, and accumulates the count.
 //
-// firstrow resets the accumulation with the current row count.
-// Otherwise, the current row count is added to the running total.
-class BinImageCount(npxs: Int, pxbw : Int) extends Module {
+// rowid = 0 starts a new image accumulation using the current row count.
+// For middle rows, the current row count is added to the running total.
+// rowid = nrows - 1 adds the current row count, stores the final image count
+// into the output register, and raises out.valid.
+//
+class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int) extends Module {
   val io = IO(new Bundle {
-    val in        = Input(Vec(npxs, UInt(pxbw.W)))
-    val firstrow  = Input(Bool())
-    val threshold = Input(UInt(pxbw.W))
-    val valid     = Input(Bool())
-
-    val out = Output(UInt(32.W))
+    val in    = Input(Vec(npxs, UInt(pxbw.W)))
+    val rowid = Input(UInt(8.W))
+    val valid = Input(Bool())
+    val out   = Decoupled(UInt(32.W))
   })
+  require(nrows > 3, "nrows must be greater than 3")
 
   val bin = Wire(Vec(npxs, Bool()))
-  for (i <- 0 until npxs) {
-    bin(i) := io.in(i) >= io.threshold
-  }
+  for (i <- 0 until npxs) { bin(i) := io.in(i) >= threshold.U }
   val rowPopCount = PopCount(bin.asUInt)
 
   val totalPopCountReg = RegInit(0.U(32.W))
-  io.out := totalPopCountReg
+  val totalPopCountOutReg = RegInit(0.U(32.W))
+  val outValidReg = RegInit(false.B)
+
+  io.out.bits := totalPopCountOutReg
+  io.out.valid := outValidReg
+  when(io.out.fire) { outValidReg := false.B }
 
   when(io.valid) {
-    when(io.firstrow) {
+    when(io.rowid === 0.U) {
       totalPopCountReg := rowPopCount
+    }.elsewhen(io.rowid === (nrows-1).U) {
+      totalPopCountOutReg := totalPopCountReg
+      outValidReg := true.B
     }.otherwise {
       totalPopCountReg :=  totalPopCountReg + rowPopCount
     }
   }
 }
 
-
 class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
                        bw: Int = 32,
                        npxs : Int = 128,
+                       nrows : Int = 32,
                        pxbw : Int = 12,
+                       threshold : Int = 20,
                        debugprint: Boolean = false)
   extends Module with HasAxiLite32IO {
 
@@ -110,18 +119,16 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   // soft reset handling logic for dut
   val softResetReg = RegInit(false.B)
   val resetCounterReg = RegInit(0.U(5.W))
-  when(resetCounterReg > 0.U) {
-    resetCounterReg := resetCounterReg - 1.U
-  }.otherwise {
-    softResetReg := false.B
-  }
+  when(resetCounterReg > 0.U) { resetCounterReg := resetCounterReg - 1.U
+  }.otherwise { softResetReg := false.B }
   val combinedReset: AsyncReset = (softResetReg || reset.asBool).asAsyncReset
 
   // instantiate your dut here
   val dut = withReset(combinedReset) {
-    Module(new BinImageCount(npxs, pxbw))
+    Module(new BinImageCount(npxs, pxbw, threshold))
   }
   dut.io.in := 0.U
+  dut.io.firstrow := false.B
   dut.io.valid := false.B
 
   class RowData(npxs: Int, pxbw: Int) extends Bundle {
@@ -133,7 +140,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
   val inputQ = Module(new Queue(new RowData(npxs, pxbw), entries = 256))
   inputQ.io.enq.valid := false.B
-  inputQ.io.enq.bits := 0.U
+  inputQ.io.enq.bits.asUInt := 0.U
   inputQ.io.deq.ready := false.B
 
   val outputQ = Module(new Queue(UInt(32.W), entries = 32))
@@ -151,8 +158,12 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
     when(inputQ.io.count === 0.U) {
       inputFeedStatusReg := InputFeedSeq.Completed
     }.otherwise {
-
-
+      inputQ.io.deq.ready := true.B
+      when(inputQ.io.deq.valid) {
+        dut.io.in := inputQ.io.deq.bits.pixels
+        dut.io.rowis := inputQ.io.deq.bits.rowid
+        dut.io.valid := true.B
+      }
     }
   }.elsewhen(inputFeedStatusReg === InputFeedSeq.Completed) {
     outputQ.io.enq.valid := true.B
