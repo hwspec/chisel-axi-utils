@@ -39,16 +39,18 @@ import firrtl.ir.BundleType
 case object TestQAXIDef extends AxiAddrMapBase {
   // definition to export
   val addrMapEntries = Seq(
-    AddrMapEntry("const1_read_addr", 0x0),
-    AddrMapEntry("const2_read_addr", 0x4),
-    AddrMapEntry("reset_write_addr", 0x8),
-
-    AddrMapEntry("stage_write_base_addr", 0x100), // up to 4096 bits per row. e.g., 0x108 means 64-bit position.
-    AddrMapEntry("rowid_write_addr", 0x300),
-
-    AddrMapEntry("startfeed_write_addr", 0x400), // start feeding data after filling up the input fifo
-
-    AddrMapEntry("outq_read_addr", 0x500)
+    AddrMapEntry("const1_rd",  0x0),
+    AddrMapEntry("const2_rd",  0x4),
+    AddrMapEntry("reset_wr",   0x8),
+    AddrMapEntry("rowid_wr",   0x10),
+    AddrMapEntry("rowid_wr",   0x14),
+    AddrMapEntry("commit_wr",  0x20), // commit the stage buffer to the input Q
+    AddrMapEntry("start_wr",   0x30), // start feeding data after filling up the input fifo
+    AddrMapEntry("inqcnt_rd",  0x34), // returns the input Q count
+    AddrMapEntry("outq_rd",    0x40),
+    AddrMapEntry("outqcnt_rd", 0x44)
+    AddrMapEntry("fillup_wr",  0x1000), // filling up a staging buf. 0x1008 means 64-bit position.
+    AddrMapEntry("fillup_rd",  0x2000), // filling up a staging buf. 0x2008 means 64-bit position.
   )
   checkaddr(addrMapEntries) // sanity check
 
@@ -67,7 +69,8 @@ case object TestQAXIDef extends AxiAddrMapBase {
 // rowid = nrows - 1 adds the current row count, stores the final image count
 // into the output register, and raises out.valid.
 //
-class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int) extends Module {
+class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int,
+                    outqsize: Int = 32, debugprint = false) extends Module {
   val io = IO(new Bundle {
     val in    = Input(Vec(npxs, UInt(pxbw.W)))
     val rowid = Input(UInt(8.W))
@@ -81,19 +84,21 @@ class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int) extends 
   val rowPopCount = PopCount(bin.asUInt)
 
   val totalPopCountReg = RegInit(0.U(32.W))
-  val totalPopCountOutReg = RegInit(0.U(32.W))
-  val outValidReg = RegInit(false.B)
 
-  io.out.bits := totalPopCountOutReg
-  io.out.valid := outValidReg
-  when(io.out.fire) { outValidReg := false.B }
+  val outq = Module(new Queue(UInt(32.W), entries = outqsize))
+  outq.io.enq.valid := false.B
+  outq.io.enq.bits := 0.U
+
+  io.out <> outq.io.deq
 
   when(io.valid) {
     when(io.rowid === 0.U) {
       totalPopCountReg := rowPopCount
     }.elsewhen(io.rowid === (nrows-1).U) {
-      totalPopCountOutReg := totalPopCountReg
-      outValidReg := true.B
+      // XXX: assumes that outq is big enough.
+      outq.io.enq.valid := true.B
+      queue.io.enq.bits := totalPopCountReg + rowPopCount
+      totalPopCountReg := 0.U
     }.otherwise {
       totalPopCountReg :=  totalPopCountReg + rowPopCount
     }
@@ -101,15 +106,17 @@ class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int) extends 
 }
 
 class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
-                       bw: Int = 32,
                        npxs : Int = 128,
                        nrows : Int = 32,
                        pxbw : Int = 12,
                        threshold : Int = 20,
                        debugprint: Boolean = false)
   extends Module with HasAxiLite32IO {
-
   val S = IO(new AxiLite32IO())
+
+  require( threshold < (1<<pxbw), f"threshold should be less than ${1<<pxbw}: ${threshold}")
+  require((npxs*pxbw) <= 4096, "npxs*pxbw should be less equal than 4096"
+  val axibw = 32
 
   import TestQAXIDef._
 
@@ -179,7 +186,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   // AXI-lite regs
   // -----------------------------
   val awHoldValidReg = RegInit(false.B)
-  val awHoldAddrReg = Reg(UInt(bw.W))
+  val awHoldAddrReg = Reg(UInt(axibw.W))
   val wHoldValidReg = RegInit(false.B)
   val wHoldDataReg = Reg(UInt(32.W))
   val wHoldStrbReg = Reg(UInt(4.W))
@@ -202,7 +209,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   }
 
   val doWrite = awHoldValidReg && wHoldValidReg && !bvalidReg
-  val addrHoldReg = RegInit(0.U(bw.W))
+  val addrHoldReg = RegInit(0.U(axibw.W))
 
   when(doWrite) {
     val a = awHoldAddrReg
@@ -212,11 +219,11 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
     when(!fullWrite) { // support full write only for this example
       bresp := SLVERR.U
-    }.elsewhen(a === axiaddrmap("reset_write_addr").U) {
+    }.elsewhen(a === axiaddrmap("reset_wr").U) {
       softResetReg := true.B
       resetCounterReg := RESET_CYCLES.U
       bresp := OKAY.U
-    }.elsewhen(a === axiaddrmap("dut_write_addr").U) {
+    }.elsewhen(a === axiaddrmap("fillup_wr").U) {
       dut.io.valid := true.B
       dut.io.in := wHoldDataReg
     }.otherwise {
@@ -260,13 +267,13 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
     val rstate = WireDefault(RState.READY2READ)
 
-    when(araddr === axiaddrmap("const1_read_addr").U) {
+    when(araddr === axiaddrmap("const1_rd").U) {
       rdataReg := const1.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("const2_read_addr").U) {
+    }.elsewhen(araddr === axiaddrmap("const2_rd").U) {
       rdataReg := const2.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("dut_read_addr").U) {
+    }.elsewhen(araddr === axiaddrmap("fillup_rd").U) {
       rdataReg := dut.io.out
       rstate := RState.COMPLETED
     }.otherwise {
