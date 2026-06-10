@@ -29,7 +29,7 @@ class Dut(bw : Int = 32) extends Module {
     val out = Output(UInt(bw.W))
   })
   val valReg = RegInit(0.U(bw.W))
-  when(io.invalid) {
+  when(io.valid) {
     valReg := io.in
   }
   io.out := valReg

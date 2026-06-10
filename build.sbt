@@ -9,7 +9,7 @@ ThisBuild / logLevel := Level.Warn
 Test / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.ScalaLibrary
 Test / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.Flat
 
-val chiselVersion = "7.9.0"
+val chiselVersion = "7.13.0"
 val scalatestVersion = "3.2.19"
 
 lazy val chiselAxiUtils = (project in file("."))

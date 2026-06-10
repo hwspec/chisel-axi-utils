@@ -39,18 +39,17 @@ import firrtl.ir.BundleType
 case object TestQAXIDef extends AxiAddrMapBase {
   // definition to export
   val addrMapEntries = Seq(
-    AddrMapEntry("const1_rd",  0x0),
-    AddrMapEntry("const2_rd",  0x4),
-    AddrMapEntry("reset_wr",   0x8),
-    AddrMapEntry("rowid_wr",   0x10),
-    AddrMapEntry("rowid_wr",   0x14),
-    AddrMapEntry("commit_wr",  0x20), // commit the stage buffer to the input Q
-    AddrMapEntry("start_wr",   0x30), // start feeding data after filling up the input fifo
-    AddrMapEntry("inqcnt_rd",  0x34), // returns the input Q count
-    AddrMapEntry("outq_rd",    0x40),
-    AddrMapEntry("outqcnt_rd", 0x44)
-    AddrMapEntry("fillup_wr",  0x1000), // filling up a staging buf. 0x1008 means 64-bit position.
-    AddrMapEntry("fillup_rd",  0x2000), // filling up a staging buf. 0x2008 means 64-bit position.
+    AddrMapEntry("const1_rd",     0x0),
+    AddrMapEntry("const2_rd",     0x4),
+    AddrMapEntry("reset_wr",      0x8),
+    AddrMapEntry("reset_done_rd", 0xc),
+    AddrMapEntry("rowid_wr",      0x10),
+    AddrMapEntry("commit_wr",     0x20), // commit the stage buffer to the input Q
+    AddrMapEntry("startfeed_wr",  0x30), // start feeding data after filling up the input fifo
+    AddrMapEntry("inqcnt_rd",     0x34), // returns the input Q count
+    AddrMapEntry("outq_rd",       0x40),
+    AddrMapEntry("outqcnt_rd",    0x44),
+    AddrMapEntry("fillup_wr",     0x1000), // filling up a staging buf. 0x1008 means 64-bit position.
   )
   checkaddr(addrMapEntries) // sanity check
 
@@ -70,34 +69,39 @@ case object TestQAXIDef extends AxiAddrMapBase {
 // into the output register, and raises out.valid.
 //
 class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int,
-                    outqsize: Int = 32, debugprint = false) extends Module {
+                    outbw : Int = 32, debugprint : Boolean = false) extends Module {
   val io = IO(new Bundle {
     val in    = Input(Vec(npxs, UInt(pxbw.W)))
-    val rowid = Input(UInt(8.W))
+    val rowid = Input(UInt(log2Ceil(nrows).W))
     val valid = Input(Bool())
-    val out   = Decoupled(UInt(32.W))
+    val out   = Decoupled(UInt(outbw.W))
   })
   require(nrows > 3, "nrows must be greater than 3")
+
+  io.out.valid := false.B
+  io.out.bits := 0.U
 
   val bin = Wire(Vec(npxs, Bool()))
   for (i <- 0 until npxs) { bin(i) := io.in(i) >= threshold.U }
   val rowPopCount = PopCount(bin.asUInt)
 
-  val totalPopCountReg = RegInit(0.U(32.W))
+  val totalPopCountReg = RegInit(0.U(outbw.W))
 
-  val outq = Module(new Queue(UInt(32.W), entries = outqsize))
-  outq.io.enq.valid := false.B
-  outq.io.enq.bits := 0.U
-
-  io.out <> outq.io.deq
+  val outTotalReg = RegInit(0.U(outbw.W))
+  val outTotalValidReg = RegInit(false.B)
+  io.out.valid := outTotalValidReg
+  when(io.out.fire) {
+    io.out.bits := outTotalReg
+    outTotalReg := 0.U
+    outTotalValidReg := false.B
+  }
 
   when(io.valid) {
     when(io.rowid === 0.U) {
       totalPopCountReg := rowPopCount
     }.elsewhen(io.rowid === (nrows-1).U) {
-      // XXX: assumes that outq is big enough.
-      outq.io.enq.valid := true.B
-      queue.io.enq.bits := totalPopCountReg + rowPopCount
+      outTotalReg := totalPopCountReg + rowPopCount
+      outTotalValidReg := true.B
       totalPopCountReg := 0.U
     }.otherwise {
       totalPopCountReg :=  totalPopCountReg + rowPopCount
@@ -109,14 +113,27 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
                        npxs : Int = 128,
                        nrows : Int = 32,
                        pxbw : Int = 12,
+                       inqsize : Int = 1024,
+                       outqsize : Int = 16,
                        threshold : Int = 20,
                        debugprint: Boolean = false)
   extends Module with HasAxiLite32IO {
   val S = IO(new AxiLite32IO())
 
-  require( threshold < (1<<pxbw), f"threshold should be less than ${1<<pxbw}: ${threshold}")
-  require((npxs*pxbw) <= 4096, "npxs*pxbw should be less equal than 4096"
   val axibw = 32
+  val nbitsperrow = npxs*pxbw
+  val nwordsperrow = (nbitsperrow + axibw - 1) / axibw
+  val nbytesperrow = nwordsperrow * (axibw/8)
+
+  if(debugprint) {
+    // print params, not RTL
+    println(f"nbitsperrow : ${nbitsperrow}")
+    println(f"nwordsperrow : ${nwordsperrow}")
+    println(f"nbytesperrow : ${nbytesperrow}")
+  }
+
+  require( threshold < (1<<pxbw), f"threshold should be less than ${1<<pxbw}: ${threshold}")
+  require(nbitsperrow < 4096, "npxs*pxbw should be less equal than 4096")
 
   import TestQAXIDef._
 
@@ -125,62 +142,78 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
   // soft reset handling logic for dut
   val softResetReg = RegInit(false.B)
-  val resetCounterReg = RegInit(0.U(5.W))
-  when(resetCounterReg > 0.U) { resetCounterReg := resetCounterReg - 1.U
-  }.otherwise { softResetReg := false.B }
+  val softResetDoneReg = RegInit(false.B)
+  val resetCounterReg = RegInit(0.U(log2Ceil(RESET_CYCLES).W))
+  when(resetCounterReg > 0.U) {
+    resetCounterReg := resetCounterReg - 1.U
+  }.otherwise {
+    softResetReg := false.B
+    softResetDoneReg := true.B
+  }
   val combinedReset: AsyncReset = (softResetReg || reset.asBool).asAsyncReset
 
   // instantiate your dut here
   val dut = withReset(combinedReset) {
-    Module(new BinImageCount(npxs, pxbw, threshold))
+    Module(new BinImageCount(npxs = npxs, pxbw = pxbw, nrows = nrows, threshold = threshold,
+      outbw = axibw, debugprint = debugprint))
   }
-  dut.io.in := 0.U
-  dut.io.firstrow := false.B
+  dut.io.in := 0.U.asTypeOf(Vec(npxs, UInt(pxbw.W)))
+  dut.io.rowid := 0.U
   dut.io.valid := false.B
+  dut.io.out.ready := false.B
+
+  val outputQ = Module(new Queue(UInt(axibw.W), entries = outqsize))
+  outputQ.io.enq.valid := false.B
+  outputQ.io.enq.bits.asUInt := 0.U
+  outputQ.io.deq.ready := false.B
+  outputQ.io.enq <> dut.io.out
 
   class RowData(npxs: Int, pxbw: Int) extends Bundle {
-    val rowid  = UInt(8.W)
+    val rowid  = UInt(log2Ceil(nrows).W)
     val pixels = Vec(npxs, UInt(pxbw.W))
   }
   val stagingPixelsReg = RegInit(0.U((npxs*pxbw).W))
-  val stagingRowidReg = RegInit(0.U(8.W))
+  val stagingRowidReg = RegInit(0.U(log2Ceil(nrows).W))
 
-  val inputQ = Module(new Queue(new RowData(npxs, pxbw), entries = 256))
+  val inputQ = Module(new Queue(new RowData(npxs, pxbw), entries = inqsize))
   inputQ.io.enq.valid := false.B
-  inputQ.io.enq.bits.asUInt := 0.U
+  inputQ.io.enq.bits := 0.U.asTypeOf(new RowData(npxs, pxbw))
   inputQ.io.deq.ready := false.B
 
-  val outputQ = Module(new Queue(UInt(32.W), entries = 32))
-  outputQ.io.enq.valid := false.B
-  outputQ.io.enq.bits := 0.U
-  outputQ.io.deq.ready := false.B
+  // staging
+  val stagingRowPixelsReg = RegInit(VecInit(Seq.fill(nwordsperrow)(0.U(axibw.W))))
+  val stagingRowRowIDReg = RegInit(0.U(log2Ceil(nrows).W))
+  val commitReg = RegInit(false.B)
+  val stagingbits = stagingRowPixelsReg.asUInt
 
+  inputQ.io.enq.bits.pixels := stagingbits(npxs*pxbw - 1, 0).asTypeOf(Vec(npxs, UInt(pxbw.W)))
+  inputQ.io.enq.bits.rowid := stagingRowRowIDReg
+  when(commitReg) {
+    inputQ.io.enq.valid := true.B // Note: the producer check inq cnt
+    commitReg := false.B
+  }
+
+  // feeding inq to dut
   object InputFeedSeq extends ChiselEnum {
-    val Idle, Feeding, Completed = Value
+    val Idle, Feeding = Value
   }
   val inputFeedStatusReg = RegInit(InputFeedSeq.Idle)
-  val imageid = RegInit(0.U(8.W))
 
   when(inputFeedStatusReg === InputFeedSeq.Feeding) {
     when(inputQ.io.count === 0.U) {
-      inputFeedStatusReg := InputFeedSeq.Completed
+      if (debugprint) printf("%d : input completed\n", cycles)
+      inputFeedStatusReg := InputFeedSeq.Idle
     }.otherwise {
       inputQ.io.deq.ready := true.B
       when(inputQ.io.deq.valid) {
+        if (debugprint) printf("%d : feeding rowid=%d cnt=%d\n", cycles, inputQ.io.deq.bits.rowid,
+          inputQ.io.count)
         dut.io.in := inputQ.io.deq.bits.pixels
-        dut.io.rowis := inputQ.io.deq.bits.rowid
+        dut.io.rowid := inputQ.io.deq.bits.rowid
         dut.io.valid := true.B
       }
     }
-  }.elsewhen(inputFeedStatusReg === InputFeedSeq.Completed) {
-    outputQ.io.enq.valid := true.B
-    when(outputQ.io.enq.ready) {
-      outputQ.io.enq.bits := dut.io.out
-      inputFeedStatusReg := InputFeedSeq.Idle
-    }
   }
-
-
 
   // -----------------------------
   // AXI-lite regs
@@ -188,7 +221,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   val awHoldValidReg = RegInit(false.B)
   val awHoldAddrReg = Reg(UInt(axibw.W))
   val wHoldValidReg = RegInit(false.B)
-  val wHoldDataReg = Reg(UInt(32.W))
+  val wHoldDataReg = Reg(UInt(axibw.W))
   val wHoldStrbReg = Reg(UInt(4.W))
 
   val bvalidReg = RegInit(false.B)
@@ -220,12 +253,25 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
     when(!fullWrite) { // support full write only for this example
       bresp := SLVERR.U
     }.elsewhen(a === axiaddrmap("reset_wr").U) {
+      if (debugprint) printf("%d: reset wr\n", cycles)
       softResetReg := true.B
       resetCounterReg := RESET_CYCLES.U
+      softResetDoneReg := false.B
       bresp := OKAY.U
-    }.elsewhen(a === axiaddrmap("fillup_wr").U) {
-      dut.io.valid := true.B
-      dut.io.in := wHoldDataReg
+    }.elsewhen(a === axiaddrmap("rowid_wr").U) {
+      if (debugprint) printf("%d: rowid wr: %x\n", cycles, wHoldDataReg)
+      stagingRowidReg := wHoldDataReg
+    }.elsewhen(a === axiaddrmap("commit_wr").U) {
+      if (debugprint) printf("%d: commit wr\n", cycles)
+      commitReg := true.B
+    }.elsewhen(a === axiaddrmap("startfeed_wr").U) {
+      if (debugprint) printf("%d: startfeed wr\n", cycles)
+      inputFeedStatusReg := InputFeedSeq.Feeding
+    }.elsewhen(a >= axiaddrmap("fillup_wr").U &&
+      a < (axiaddrmap("fillup_wr") + nbytesperrow).U) {
+      val wordoffset = ((a - axiaddrmap("fillup_wr").U) >> 2.U)(log2Ceil(nwordsperrow) - 1,0)
+      if (debugprint) printf("%d: filling staging pixels: %x at %d\n", cycles, wHoldDataReg, wordoffset )
+      stagingRowPixelsReg(wordoffset) := wHoldDataReg
     }.otherwise {
       brespReg := AxiLiteResp.SLVERR.U
     }
@@ -268,13 +314,35 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
     val rstate = WireDefault(RState.READY2READ)
 
     when(araddr === axiaddrmap("const1_rd").U) {
+      if (debugprint) printf("%d: const1 rd\n", cycles)
       rdataReg := const1.U
       rstate := RState.COMPLETED
     }.elsewhen(araddr === axiaddrmap("const2_rd").U) {
+      if (debugprint) printf("%d: const2 rd\n", cycles)
       rdataReg := const2.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("fillup_rd").U) {
-      rdataReg := dut.io.out
+    }.elsewhen(araddr === axiaddrmap("reset_done_rd").U) {
+      if (debugprint) printf("%d: reset done rd\n", cycles)
+      rdataReg := softResetDoneReg
+      rstate := RState.COMPLETED
+    }.elsewhen(araddr === axiaddrmap("inqcnt_rd").U) {
+      if (debugprint) printf("%d: inqcnt rd %d\n", cycles, inputQ.io.count)
+      rdataReg := inputQ.io.count
+      rstate := RState.COMPLETED
+    }.elsewhen(araddr === axiaddrmap("outq_rd").U) {
+      outputQ.io.deq.ready := true.B
+      if (debugprint) printf("%d: out rd valid=%d bits=%d\n", cycles
+        , outputQ.io.deq.valid, outputQ.io.deq.bits)
+      when(outputQ.io.deq.valid) {
+        rdataReg := outputQ.io.deq.bits
+      }.otherwise {
+        rdataReg := const1.U
+      }
+      rdataReg := inputQ.io.count
+      rstate := RState.COMPLETED
+    }.elsewhen(araddr === axiaddrmap("outqcnt_rd").U) {
+      if (debugprint) printf("%d: outqcnt rd %d\n", cycles, outputQ.io.count)
+      rdataReg := outputQ.io.count
       rstate := RState.COMPLETED
     }.otherwise {
       if (debugprint) printf("%d: bad read req %d\n", cycles, araddr)
