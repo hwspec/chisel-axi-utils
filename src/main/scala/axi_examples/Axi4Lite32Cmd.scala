@@ -25,11 +25,11 @@ case object CmdAXIDef extends AxiAddrMapBase {
 class Dut(bw : Int = 32) extends Module {
   val io = IO(new Bundle {
     val in  = Input(UInt(bw.W))
-    val invalid = Input(Bool())
+    val valid = Input(Bool())
     val out = Output(UInt(bw.W))
   })
   val valReg = RegInit(0.U(bw.W))
-  when(io.invalid) {
+  when(io.valid) {
     valReg := io.in
   }
   io.out := valReg
@@ -61,7 +61,7 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
     Module(new Dut())
   }
   dut.io.in := 0.U
-  dut.io.invalid := false.B
+  dut.io.valid := false.B
 
   // -----------------------------
   // AXI-lite regs
@@ -105,7 +105,7 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
       resetCounterReg := RESET_CYCLES.U
       bresp := OKAY.U
     }.elsewhen(a === axiaddrmap("dut_write_addr").U) {
-      dut.io.invalid := true.B
+      dut.io.valid := true.B
       dut.io.in := wHoldDataReg
     }.otherwise {
       brespReg := AxiLiteResp.SLVERR.U
