@@ -26,7 +26,7 @@ class Axi4Lite32CounterSpec extends AnyFlatSpec with ChiselSim {
       val bresp = bfm.write(0, 0) // reset the counter
 
       println("Read every cycle")
-      for (i <- 0 until 3)   printCounters(bfm.read(0)._1)
+      for (i <- 0 until 3)   printCounters(bfm.read(0)._1) // ._1 for value, ._2 for errcode
 
       println("Read with stallRReady")
       for (i <- 0 until 3)   printCounters(bfm.read(0, stallRReady = 5)._1)
