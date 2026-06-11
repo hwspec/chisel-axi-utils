@@ -76,7 +76,15 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
           }
         }
       }
-      resetdut()
+      def startfeed() : Unit = {
+        writeval("startfeed_wr", 1)
+        assert(readval("inqcnt_rd") > 0)
+        var done = false
+        while(!done) {
+          if (readval("drained_rd") > 0)
+            done = true
+        }
+      }
 
       def commitRow(rowid : Int, pxs: List[Int]) : Unit = {
         var tmp : BigInt = 0
@@ -88,19 +96,22 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
           val v = readField(tmp, i, axibw)
           writeval("fillup_wr", v, offset = i*4)
         }
-        writeval("rowid_wr", rowid)
-        writeval("commit_wr", 1)
+        writeval("commit_wr", rowid)
       }
-      val rowpxs = List.tabulate(npxs) { i => if (i==5) threshold+2 else 0}
 
-      for (i <- 0 until nrows) {
-        commitRow(i, rowpxs)
-      }
+      resetdut()
+
+      val rowpxs = List.tabulate(npxs) { i => if (i==5) threshold+2 else 0}
+      for (i <- 0 until nrows) {     commitRow(i, rowpxs)     }
       val inqcnt = readval("inqcnt_rd")
-      println(f"inqcnt = ${inqcnt}")
       assert(inqcnt == nrows)
 
-      // println("Axi4Lite32TestQ test passed!")
+      startfeed()
+
+      assert(readval("outqcnt_rd")==1)
+      assert(readval("outq_rd")==nrows)
+      assert(readval("outqcnt_rd")==0)
+      println("Axi4Lite32TestQ test passed!")
     }
   }
 }
