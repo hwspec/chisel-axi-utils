@@ -11,10 +11,11 @@ import axi_examples.TestQAXIDef._
 class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
   val const1val = 0xbeefcafeL
   val const2val = 0xbad0f00dL
-  val npxs = 64
-  val nrows = 16
+  val npxs = 8
+  val nrows = 4
   val pxbw = 12
   val threshold = 20
+  val axibw = 32
 
   def mkmask(p1: Int, p2: Int) : BigInt = {
     val width = p2 - p1 + 1
@@ -28,15 +29,14 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
     val inserted = (value & fieldMask) << pos1    // truncate and position value
     cleared | inserted
   }
-
-  def updatePixel(currow : BigInt, pos : Int, v : Int) : BigInt = {
-    val bpos1 = pos * pxbw
-    val bpos2 = bpos1 + pxbw - 1
+  def updateField(currow : BigInt, pos : Int, v : Int, bw : Int) : BigInt = {
+    val bpos1 = pos * bw
+    val bpos2 = bpos1 + bw - 1
     updateBits(currow, bpos1, bpos2, v)
   }
-  def readPixel(currow : BigInt, pos : Int) : BigInt = {
-    val bpos1 = pos * pxbw
-    val bpos2 = bpos1 + pxbw - 1
+  def readField(currow : BigInt, pos : Int, bw : Int) : BigInt = {
+    val bpos1 = pos * bw
+    val bpos2 = bpos1 + bw - 1
     val fieldMask = mkmask(bpos1, bpos2)
     (currow >> bpos1) & fieldMask
   }
@@ -44,20 +44,22 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
   "foo" should "pass" in {
     var row: BigInt = 0
     for(i <- 0 until npxs) {
-      row = updatePixel(row, i, 10 + i)
+      row = updateField(row, i, 10 + i, pxbw)
     }
     for(i <- 0 until npxs) {
-      assert( readPixel(row, i) == 10 + i)
+      assert(readField(row, i, pxbw) == 10 + i)
     }
   }
 
   "test AxiList32TestQ" should "pass" in {
-    simulate(new Axi4Lite32TestQ(const1 = const1val, const2 = const2val, debugprint = true)) { dut =>
+    simulate(new Axi4Lite32TestQ(const1 = const1val, const2 = const2val,
+      npxs = npxs, nrows = nrows,  pxbw = pxbw,  threshold = threshold,
+      debugprint = true)) { dut =>
       val bfm = new Axi4Lite32BFM(dut)
       bfm.initMaster()
 
       def readval(k: String) : BigInt = bfm.read(axiaddrmap(k))._1
-      def writeval(k: String, v: BigInt) : BigInt = bfm.write(axiaddrmap(k), v)
+      def writeval(k: String, v: BigInt, offset : Int = 0) : BigInt = bfm.write(axiaddrmap(k)+offset, v)
 
       assert(readval("const1_rd") == const1val)
       assert(readval("const2_rd") == const2val)
@@ -76,17 +78,29 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
       }
       resetdut()
 
-      /*
-      val testval = 1234
-      bfm.write(dutwraddr, testval)
-      val v1 = bfm.read(dutrdaddr)._1
-      assert(v1 == testval)
+      def commitRow(rowid : Int, pxs: List[Int]) : Unit = {
+        var tmp : BigInt = 0
+        for (e <- pxs.zipWithIndex) {
+          tmp = updateField(tmp, pos=e._2, v=e._1, bw=pxbw)
+        }
+        val nwords = ((npxs*pxbw) + axibw - 1)/axibw
+        for (i <- 0 until nwords) {
+          val v = readField(tmp, i, axibw)
+          writeval("fillup_wr", v, offset = i*4)
+        }
+        writeval("rowid_wr", rowid)
+        writeval("commit_wr", 1)
+      }
+      val rowpxs = List.tabulate(npxs) { i => if (i==5) threshold+2 else 0}
 
-      bfm.write(resetwraddr, 1) // do softreset
-      val v2 = bfm.read(dutrdaddr)._1
-      assert(v2 == 0)
-*/
-      println("Axi4Lite32TestQ test passed!")
+      for (i <- 0 until nrows) {
+        commitRow(i, rowpxs)
+      }
+      val inqcnt = readval("inqcnt_rd")
+      println(f"inqcnt = ${inqcnt}")
+      assert(inqcnt == nrows)
+
+      // println("Axi4Lite32TestQ test passed!")
     }
   }
 }
