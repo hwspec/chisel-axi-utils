@@ -1,3 +1,6 @@
+# See LICENSE file for details.
+# written by Kaz Yoshii <kazutomo.yoshii@gmail.com>
+
 import os, sys, random
 from types import SimpleNamespace
 
@@ -10,7 +13,7 @@ from cocotbext.axi import AxiLiteBus, AxiLiteMaster, AxiLiteRam, AxiResp
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-class AXISIM:
+class COCOTB_Bridge:
     async def reset_dut(self, cycles=5):
         self.dut.s_axi_aresetn.value = 0  # assert (active-low)
         for _ in range(cycles):

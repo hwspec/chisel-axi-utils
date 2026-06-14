@@ -42,7 +42,6 @@ autoconf
 ./configure --prefix=__INSTALLDIR__  # replace __INSTALLDIR__
 make
 make install
-```
 
 #### cocotb
 
@@ -60,6 +59,12 @@ python3 -m pip install -r requirements.txt
 Deactivate the environment when finished:
 ```bash
 deactivate
+```
+
+Please also install axi_test_bridge
+```bash
+cd python
+make install
 ```
 
 

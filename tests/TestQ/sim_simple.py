@@ -1,8 +1,11 @@
-from AXISIM import *
+
+import cocotb
+
+from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
 
 @cocotb.test()
 async def sim_simple(dut):
-    tt = AXISIM(dut) # tt = test top
+    tt = COCOTB_Bridge(dut) # tt = test top
     await tt.setup()
 
     c1 = await tt.readWord(tt.addrmap.const1_rd)

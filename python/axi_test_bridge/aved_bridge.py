@@ -1,9 +1,12 @@
+# See LICENSE file for details.
+# written by Kaz Yoshii <kazutomo.yoshii@gmail.com>
+
 import os, sys, time
 import pyaved
 
-from AXISIM import readAddrMap
+from COCOTB_Bridge import readAddrMap
 
-class RevMemEMU:
+class AVED_Bridge:
     def aved_write32(self, addr, v):
         self.aved.write32(addr, v)
 

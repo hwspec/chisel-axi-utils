@@ -1,4 +1,5 @@
-__pycache__
+__pycache__/
+python/axi_test_bridge.egg-info/
 *.class
 *.log
 
