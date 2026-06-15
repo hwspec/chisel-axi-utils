@@ -9,11 +9,12 @@ import firrtl.ir.BundleType
 case object CmdAXIDef extends AxiAddrMapBase {
   // definition to export
   val addrMapEntries = Seq(
-    AddrMapEntry("const1_read_addr", 0x0),
-    AddrMapEntry("const2_read_addr", 0x4),
-    AddrMapEntry("reset_write_addr", 0x8),
-    AddrMapEntry("dut_write_addr",   0x10),
-    AddrMapEntry("dut_read_addr",    0x14),
+    AddrMapEntry("const1_rd",     0x0),
+    AddrMapEntry("const2_rd",     0x4),
+    AddrMapEntry("reset_wr",      0x10),
+    AddrMapEntry("reset_done_rd", 0x14),
+    AddrMapEntry("dut_wr",        0x20),
+    AddrMapEntry("dut_rd",        0x24),
   )
   checkaddr(addrMapEntries) // sanity check
 
@@ -48,11 +49,13 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
 
   // soft reset handling logic for dut
   val softResetReg = RegInit(false.B)
-  val resetCounterReg = RegInit(0.U(5.W))
+  val softResetDoneReg = RegInit(false.B)
+  val resetCounterReg = RegInit(0.U(log2Ceil(RESET_CYCLES).W))
   when(resetCounterReg > 0.U) {
     resetCounterReg := resetCounterReg - 1.U
   }.otherwise {
     softResetReg := false.B
+    softResetDoneReg := true.B
   }
   val combinedReset: AsyncReset = (softResetReg || reset.asBool).asAsyncReset
 
@@ -100,11 +103,12 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
 
     when(!fullWrite) { // support full write only for this example
       bresp := SLVERR.U
-    }.elsewhen(a === axiaddrmap("reset_write_addr").U) {
+    }.elsewhen(a === axiaddrmap("reset_wr").U) {
       softResetReg := true.B
       resetCounterReg := RESET_CYCLES.U
+      softResetDoneReg := false.B
       bresp := OKAY.U
-    }.elsewhen(a === axiaddrmap("dut_write_addr").U) {
+    }.elsewhen(a === axiaddrmap("dut_wr").U) {
       dut.io.valid := true.B
       dut.io.in := wHoldDataReg
     }.otherwise {
@@ -148,13 +152,16 @@ class Axi4Lite32Cmd (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw:
 
     val rstate = WireDefault(RState.READY2READ)
 
-    when(araddr === axiaddrmap("const1_read_addr").U) {
+    when(araddr === axiaddrmap("const1_rd").U) {
       rdataReg := const1.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("const2_read_addr").U) {
+    }.elsewhen(araddr === axiaddrmap("const2_rd").U) {
       rdataReg := const2.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("dut_read_addr").U) {
+    }.elsewhen(araddr === axiaddrmap("reset_done_rd").U) {
+      rdataReg := softResetDoneReg
+      rstate := RState.COMPLETED
+    }.elsewhen(araddr === axiaddrmap("dut_rd").U) {
       rdataReg := dut.io.out
       rstate := RState.COMPLETED
     }.otherwise {

@@ -16,22 +16,37 @@ class Axi4Lite32CmdSpec extends AnyFlatSpec with ChiselSim {
       val bfm = new Axi4Lite32BFM(dut)
       bfm.initMaster()
 
-      val const1addr  = axiaddrmap("const1_read_addr")
-      val const2addr  = axiaddrmap("const2_read_addr")
-      val resetwraddr = axiaddrmap("reset_write_addr")
-      val dutwraddr   = axiaddrmap("dut_write_addr")
-      val dutrdaddr   = axiaddrmap("dut_read_addr")
+      def readval(k: String) : BigInt = bfm.read(axiaddrmap(k))._1
+      def writeval(k: String, v: BigInt, offset : Int = 0) : BigInt = bfm.write(axiaddrmap(k)+offset, v)
+      def resetdut(): Unit = {
+        writeval("reset_wr", 1) // initiate reset
+        var reset_done = false
+        val maxloopcnt = 1000
+        var loopcnt = 0
+        while (!reset_done) {
+          reset_done = readval("reset_done_rd") > 0
+          if (loopcnt > maxloopcnt) {
+            throw new RuntimeException("Reached maxloopcnt. Something wrong")
+          }
+        }
+      }
+      val const1addr  = axiaddrmap("const1_rd")
+      val const2addr  = axiaddrmap("const2_rd")
+      val resetwraddr = axiaddrmap("reset_wr")
+      val dutwraddr   = axiaddrmap("dut_wr")
+      val dutrdaddr   = axiaddrmap("dut_rd")
 
-      assert(bfm.read(const1addr)._1 == const1val)
-      assert(bfm.read(const2addr)._1 == const2val)
+      assert(readval("const1_rd") == const1val)
+      assert(readval("const2_rd") == const2val)
 
       val testval = 1234
-      bfm.write(dutwraddr, testval)
-      val v1 = bfm.read(dutrdaddr)._1
+      writeval("dut_wr", testval)
+      val v1 = readval("dut_rd")
       assert(v1 == testval)
 
-      bfm.write(resetwraddr, 1) // do softreset
-      val v2 = bfm.read(dutrdaddr)._1
+      resetdut()
+
+      val v2 = readval("dut_rd")
       assert(v2 == 0)
 
       println("Axi4Lite32Cmd test passed!")

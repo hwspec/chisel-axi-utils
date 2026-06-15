@@ -15,11 +15,11 @@ EXTRA_ARGS += --trace --trace-structs
 
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
-	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=sim_simple TOPLEVEL=$(TOPNAME)
+	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=sim_cmd TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
 	@cat output.txt
 
-$(SRCDIR)/$(HWMODULENAME).sv :
+$(SRCDIR)/$(HWMODULENAME).sv gen:
 	(cd ../../ ; sbt "runMain axi_examples.$(HWMODULENAME)")
 
 include $(shell cocotb-config --makefiles)/Makefile.sim

@@ -1,13 +1,14 @@
-.PHONY: sbttest cocotbtest
+.PHONY: sbttest tests
 
-all: sbttest cocotbtest
+all: sbttest tests
+
+# cocotb tests
+tests:
+	@make -C tests/Cmd
+	@make -C tests/TestQ
+	@make -C tests/RevMem
 
 # Chisel test
 sbttest:
 	@sbt test
-
-# cocotb test
-cocotbtest:
-	@make -C tests/Cmd
-
 

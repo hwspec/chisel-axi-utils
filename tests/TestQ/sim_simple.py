@@ -1,4 +1,3 @@
-
 import cocotb
 
 from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
