@@ -15,7 +15,7 @@ EXTRA_ARGS += --trace --trace-structs
 
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
-	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=sim_simple TOPLEVEL=$(TOPNAME)
+	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=tb_testq TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
 	@cat output.txt
 
@@ -25,5 +25,5 @@ $(SRCDIR)/$(HWMODULENAME).sv :
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 clean::
-	rm -f output.txt results.xml *.vcd fpga_simple.py
+	rm -f output.txt results.xml *.vcd fpga_tb_testq.py
 	rm -rf __pycache__

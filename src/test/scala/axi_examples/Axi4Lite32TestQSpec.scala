@@ -111,6 +111,7 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
       assert(readval("outqcnt_rd")==1)
       assert(readval("outq_rd")==nrows)
       assert(readval("outqcnt_rd")==0)
+
       println("Axi4Lite32TestQ test passed!")
     }
   }

@@ -44,8 +44,8 @@ class Axi4Lite32CmdSpec extends AnyFlatSpec with ChiselSim {
       val v1 = readval("dut_rd")
       assert(v1 == testval)
 
+      // testing softreset
       resetdut()
-
       val v2 = readval("dut_rd")
       assert(v2 == 0)
 
