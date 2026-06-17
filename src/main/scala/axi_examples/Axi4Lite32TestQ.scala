@@ -380,11 +380,21 @@ object Axi4Lite32TestQ extends App {
   import TestQAXIDef._
   val const1 : Long = 0xdeadbeefL // module id
   val const2 : Long = githash()   // return githash id (the first 8 chars)
+  val npxs : Int = 8
+  val nrows : Int = 4
+  val pxbw : Int = 12
+  val inqsize : Int = 1024
+  val outqsize : Int = 16
+  val threshold : Int = 20
 
-  val consts = Map("const1" -> const1, "const2" -> const2)
- EmitVerilog.generate(
-   new Axi4Lite32TestQ(const1 = const1, const2 = const2, debugprint=true),
-   addrmap = Some(TestQAXIDef),
-   constmap = Some(consts)
- )
+  val consts = Map("const1" -> const1, "const2" -> const2,
+    "npxs" -> npxs.toLong, "nrows" -> nrows.toLong, "pxbw" -> pxbw.toLong,
+    "inqsize" -> inqsize.toLong, "outqsize" -> outqsize.toLong, "threshold" -> threshold.toLong)
+  EmitVerilog.generate(
+    new Axi4Lite32TestQ(const1 = const1, const2 = const2, debugprint=true,
+      npxs = npxs, nrows = nrows, pxbw = pxbw, inqsize = inqsize, outqsize = outqsize,
+      threshold = threshold),
+    addrmap = Some(TestQAXIDef),
+    constmap = Some(consts)
+  )
 }

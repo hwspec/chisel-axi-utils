@@ -4,11 +4,21 @@
 
 SIM ?= verilator
 TOPLEVEL_LANG ?= verilog
+
 TOPNAME=user_accel_bd_wrapper
 HWMODULENAME=Axi4Lite32TestQ
+
 SRCDIR = $(abspath ../../generated/$(HWMODULENAME))
-VERILOG_SOURCES += $(SRCDIR)/user_accel_bd_wrapper.v $(SRCDIR)/*.sv
-VERILOG_SOURCES += $(SRCDIR)/verification/*.sv
+VERIFDIR := $(SRCDIR)/verification
+
+VERILOG_SOURCES += $(SRCDIR)/user_accel_bd_wrapper.v
+VERILOG_SOURCES += $(wildcard $(SRCDIR)/*.sv)
+
+# Compile only the top-level verification layer.
+VERILOG_SOURCES += $(VERIFDIR)/layers-Axi4Lite32TestQ-Verification.sv
+
+# Needed for `include "layers-BinImageCount-Verification.sv"
+VERILOG_INCLUDE_DIRS += $(VERIFDIR)
 
 WAVES = 1
 EXTRA_ARGS += --trace --trace-structs
