@@ -6,8 +6,8 @@ ThisBuild / organization     := "com.github.kazutomo"
 ThisBuild / logLevel := Level.Warn
 
 // Test / parallelExecution := false
-Test / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.ScalaLibrary
-Test / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.Flat
+// Test / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.ScalaLibrary
+// Test / classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.Flat
 
 val chiselVersion = "7.13.0"
 val scalatestVersion = "3.2.19"

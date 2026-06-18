@@ -1,7 +1,6 @@
+rm -rf fpga_tb_revmem.py
 
-rm -rf fpga_simple.py
+python ../../utils/conv_cocotb_to_fpga.py tb_revmem.py fpga_tb_revmem.py \
+      --sim COCOTB_Bridge  --fpga AVED_Bridge
 
-python ../../utils/conv_cocotb_to_fpga.py sim_simple.py fpga_simple.py \
-      --sim RevMemSIM \
-      --fpga RevMemFPGA
 

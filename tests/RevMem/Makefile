@@ -13,7 +13,7 @@ EXTRA_ARGS += --trace --trace-structs
 
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
-	@$(MAKE) sim MODULE=sim_simple TOPLEVEL=$(TOPNAME)
+	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=tb_revmem TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
 	@cat output.txt
 

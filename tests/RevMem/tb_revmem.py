@@ -1,4 +1,5 @@
-from RevMemSIM import *
+import cocotb
+from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
 
 def rev32bits(x: int):
     x &= 0xFFFFFFFF
@@ -18,8 +19,8 @@ async def validateRevWord(rev, addr, input):
     assert v == ref, f"v={v:08x} ref={ref:08x}"
 
 @cocotb.test()
-async def sim_simple(dut):
-    rev = RevMemSIM(dut)
+async def tb_revmem(dut):
+    rev = COCOTB_Bridge(dut)
     await rev.setup()
 
     addr = 0
