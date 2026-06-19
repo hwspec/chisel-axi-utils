@@ -39,7 +39,7 @@ object EmitVerilog {
                                           opts : Map[String, String] = Map("vivado" -> "v80", "axiwrapper" -> "bd"),
                                           addrmap : Option[AxiAddrMapBase] = None,
                                           constmap : Option[Map[String, Long]] = None
-                                         ) : Unit = {
+                                         ) : String = {
     val topname = implicitly[ClassTag[T]].runtimeClass.getSimpleName
     val targetdir = "generated/" + topname
     Files.createDirectories(java.nio.file.Paths.get(targetdir))
@@ -65,6 +65,8 @@ object EmitVerilog {
       case Some(am) => am.writeAddrFile(targetdir + "/addrmap.txt", constmap)
       case None =>
     }
+
+    os.Path(targetdir, os.pwd).toString
   }
 
   def writeto(fn: String, text: String, executable: Boolean = false) : Unit = {

@@ -3,6 +3,7 @@
 package axi
 
 import chisel3._
+import upickle.default._
 
 object AxiLiteResp {
   val OKAY   = 0b00
@@ -49,4 +50,21 @@ class AxiLite32IO(addrW: Int = 32) extends Bundle {
 
 trait HasAxiLite32IO { this: Module =>
   val S: AxiLite32IO
+}
+
+trait AxiModuleParams {
+  def moduleName: String
+}
+
+object ModuleParams {
+  def writejson[T <: AxiModuleParams: Writer](
+                                              params: T,
+                                              directory: os.Path
+                                            ): Unit = {
+    os.write.over(
+      directory / s"${params.moduleName}_params.json",
+      write(params, indent = 2),
+      createFolders = true
+    )
+  }
 }

@@ -4,7 +4,8 @@ import axi._
 import axi.AxiLiteResp._
 import chisel3._
 import chisel3.util._
-import firrtl.ir.BundleType
+// import firrtl.ir.BundleType
+import upickle.default._
 
 case object CmdAXIDef extends AxiAddrMapBase {
   // definition to export
@@ -20,6 +21,26 @@ case object CmdAXIDef extends AxiAddrMapBase {
 
   // internal definition
   val RESET_CYCLES = 8 // soft reset
+}
+
+case class CmdModuleParams(
+                            // address map
+                            const1_rd : Long = 0x0,
+                            const2_rd : Long = 0x4,
+                            reset_wr : Long = 0x10,
+                            reset_done_rd : Long = 0x14,
+                            dut_wr : Long = 0x20,
+                            dut_rd : Long = 0x24,
+                            // constant definition
+                            const1: Long,
+                            const2: Long,
+                            reset_cycles : Int = 8 // soft reset cycles
+                          ) extends AxiModuleParams {
+  val moduleName = "Cmd"
+}
+
+object CmdModuleParams {
+  implicit val rw: ReadWriter[CmdModuleParams] = macroRW
 }
 
 // replace Dut with your actual dut
@@ -184,10 +205,13 @@ object Axi4Lite32Cmd extends App {
   val const1 : Long = 0xdeadbeefL // module id
   val const2 : Long = githash()   // return githash id (the first 8 chars)
 
+  val p = CmdModuleParams(const1 = const1, const2 = const2)
+
   val consts = Map("const1" -> const1, "const2" -> const2)
- EmitVerilog.generate(
-   new Axi4Lite32Cmd(const1 = const1, const2 = const2, debugprint=true),
-   addrmap = Some(CmdAXIDef),
-   constmap = Some(consts)
- )
+  val targetdir = EmitVerilog.generate(
+    new Axi4Lite32Cmd(const1 = const1, const2 = const2, debugprint=true),
+    addrmap = Some(CmdAXIDef),
+    constmap = Some(consts),
+  )
+  ModuleParams.writejson(p, os.Path(targetdir))
 }
