@@ -11,7 +11,7 @@ object Axi4WriteMode {
   case object WFirst    extends AxiWriteMode
 }
 
-class Axi4Lite32BFM[D <: Module with HasAxiLite32IO](dut: D, timeoutCycles: Int = 1000) {
+class Axi4Lite32BFM[D <: chisel3.Module with axi.HasAxiLite32IO](dut: D, timeoutCycles: Int = 1000) {
   import chisel3.simulator.PeekPokeAPI._
   import Axi4WriteMode._
   
@@ -70,7 +70,6 @@ class Axi4Lite32BFM[D <: Module with HasAxiLite32IO](dut: D, timeoutCycles: Int 
     step(1) // handshake
     axi.wvalid.poke(false.B)
   }
-
 
   def sendSimulAWW(addr: BigInt, data: BigInt, strb: Int = 0xF): Unit = {
     axi.awaddr.poke(addr.U)
@@ -149,5 +148,29 @@ class Axi4Lite32BFM[D <: Module with HasAxiLite32IO](dut: D, timeoutCycles: Int 
   def read(addr: BigInt, stallRReady: Int = 0): (BigInt, Int) = {
     sendAR(addr)
     recvR(stallRReady = stallRReady)
+  }
+
+  // convenient alias. no error checking
+  def readVal(addr: Long, offset: Long= 0) : BigInt = read(addr+offset)._1
+  def writeVal(addr: Long, v: BigInt, offset: Long = 0) : BigInt = write(addr+offset, v)
+  def expectVal(addr: Long, ref: BigInt, offset: Long = 0,  msg: String = "") : Unit = {
+    val v = read(addr+offset)._1
+    assert(v == ref, msg)
+  }
+
+  // below are convenient functions. requires AxiModuleParams
+  def softReset(c: AxiModuleParams with AxiModuleDefParams,
+                maxLoopCnt: Int = 1000): Int = {
+    write(c.soft_reset_rw, 1)
+    var resetDone = false
+    var loopCnt = 0
+    while (!resetDone) {
+      resetDone = read(c.soft_reset_rw)._1 > 0
+      if (loopCnt > maxLoopCnt) {
+        throw new RuntimeException(f"Reached maxLoopCnt:$maxLoopCnt!")
+      }
+      loopCnt += 1
+    }
+    loopCnt
   }
 }

@@ -56,6 +56,10 @@ trait AxiModuleParams {
   def moduleName: String
 }
 
+trait AxiModuleDefParams {
+  def soft_reset_rw : Long
+}
+
 object AxiModuleParamsHelper {
   def writeToJson[T <: AxiModuleParams: Writer](
                                               params: T,
@@ -68,7 +72,7 @@ object AxiModuleParamsHelper {
     )
   }
 
-  def updateFromJson[T: ReadWriter](
+  private def updateFromJson[T: ReadWriter](
                                    current: T,
                                    path: os.Path
                                  ): T = {
@@ -81,8 +85,8 @@ object AxiModuleParamsHelper {
     read[T](currentJson)
   }
 
-  def checkParamEnv[T: ReadWriter](current: T, envname: String) : T = {
-    val fn : Option[String] = sys.env.get(envname)
+  def checkParamEnv[T: ReadWriter](current: T, envName: String) : T = {
+    val fn : Option[String] = sys.env.get(envName)
     val updated = fn match {
       case Some(fn) => AxiModuleParamsHelper.updateFromJson(current, os.Path(fn))
       case None => current
@@ -90,11 +94,11 @@ object AxiModuleParamsHelper {
     updated
   }
 
-  def getGitHash() : Long = {
+  def getGitHash : Long = {
     import scala.sys.process._
-    val githashstr = "git rev-parse HEAD".!!.trim
-    val first8 = githashstr.take(8)
-    val githash: Long = java.lang.Long.parseUnsignedLong(first8, 16)
-    githash
+    val gitHashStr = "git rev-parse HEAD".!!.trim
+    val first8 = gitHashStr.take(8)
+    val gitHash: Long = java.lang.Long.parseUnsignedLong(first8, 16)
+    gitHash
   }
 }

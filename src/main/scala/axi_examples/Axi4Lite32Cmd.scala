@@ -5,58 +5,29 @@ import axi.AxiLiteResp._
 import axi.AxiModuleParamsHelper._
 import chisel3._
 import chisel3.util._
-// import firrtl.ir.BundleType
 import upickle.default._
 
-//case object CmdAXIDef extends AxiAddrMapBase {
-//  // definition to export
-//  val addrMapEntries = Seq(
-//    AddrMapEntry("const1_rd",     0x0),
-//    AddrMapEntry("const2_rd",     0x4),
-//    AddrMapEntry("reset_wr",      0x10),
-//    AddrMapEntry("reset_done_rd", 0x14),
-//    AddrMapEntry("dut_wr",        0x20),
-//    AddrMapEntry("dut_rd",        0x24),
-//  )
-//  checkaddr(addrMapEntries) // sanity check
-//
-//  // internal definition
-//  val RESET_CYCLES = 8 // soft reset
-//}
-
-
 case class CmdModuleParams( // Note: do not put default value here
-                            // address map
-                            const1_rd : Long,
-                            const2_rd : Long,
-                            reset_wr : Long,
-                            reset_done_rd : Long,
-                            dut_wr : Long,
-                            dut_rd : Long,
+                            // params suffixed with _r, _w, or _rw represent addresses
+                            const1_r : Long, const2_r : Long,
+                            soft_reset_rw : Long,
+                            dut_rw : Long,
                             // constant definition
-                            const1: Long,
-                            const2: Long,
-                            reset_cycles : Int // soft reset cycles
-                          ) extends AxiModuleParams {
+                            const1: Long, const2: Long,
+                            reset_cycles : Int, // soft reset cycles
+                          ) extends AxiModuleParams with AxiModuleDefParams
+{
   val moduleName = "Cmd"
 }
 
 object CmdModuleParams {
   implicit val rw: ReadWriter[CmdModuleParams] = macroRW
 
-  def default(const1: Long,
-              const2: Long
-             ) : CmdModuleParams =
+  def default(const1: Long, const2: Long) : CmdModuleParams =
     new CmdModuleParams(
-      const1_rd = 0x0,
-      const2_rd = 0x4,
-      reset_wr = 0x10,
-      reset_done_rd = 0x14,
-      dut_wr = 0x20,
-      dut_rd = 0x24,
-      const1 = const1,
-      const2 = const2,
-      reset_cycles = 8)
+      const1_r = 0x0, const2_r = 0x4, soft_reset_rw = 0x10, dut_rw = 0x20,
+      const1 = const1, const2 = const2, reset_cycles = 8
+    )
 }
 
 // replace Dut with your actual dut
@@ -73,13 +44,12 @@ class Dut(bw : Int = 32) extends Module {
   io.out := valReg
 }
 
-class Axi4Lite32Cmd (p : CmdModuleParams,
-                     // const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL, bw: Int = 32,
-                     debugprint: Boolean = false)
-  extends Module with HasAxiLite32IO {
+class Axi4Lite32Cmd(p : CmdModuleParams, debugprint: Boolean = false)
+  extends chisel3.Module with axi.HasAxiLite32IO {
+
   val bw: Int = 32
 
-  val S = IO(new AxiLite32IO())
+  override val S = IO(new AxiLite32IO())
 
   // cycle counter for convenience
   val (cycles, wrap) = Counter(true.B, 1 << 16)
@@ -140,12 +110,12 @@ class Axi4Lite32Cmd (p : CmdModuleParams,
 
     when(!fullWrite) { // support full write only for this example
       bresp := SLVERR.U
-    }.elsewhen(a === p.reset_wr.U) {
+    }.elsewhen(a === p.soft_reset_rw.U) {
       softResetReg := true.B
       resetCounterReg := p.reset_cycles.U
       softResetDoneReg := false.B
       bresp := OKAY.U
-    }.elsewhen(a === p.dut_wr.U) {
+    }.elsewhen(a === p.dut_rw.U) {
       dut.io.valid := true.B
       dut.io.in := wHoldDataReg
     }.otherwise {
@@ -189,16 +159,16 @@ class Axi4Lite32Cmd (p : CmdModuleParams,
 
     val rstate = WireDefault(RState.READY2READ)
 
-    when(araddr === p.const1_rd.U) {
+    when(araddr === p.const1_r.U) {
       rdataReg := p.const1.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === p.const2_rd.U) {
+    }.elsewhen(araddr === p.const2_r.U) {
       rdataReg := p.const2.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === p.reset_done_rd.U) {
+    }.elsewhen(araddr === p.soft_reset_rw.U) {
       rdataReg := softResetDoneReg
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === p.dut_rd.U) {
+    }.elsewhen(araddr === p.dut_rw.U) {
       rdataReg := dut.io.out
       rstate := RState.COMPLETED
     }.otherwise {
@@ -218,15 +188,11 @@ class Axi4Lite32Cmd (p : CmdModuleParams,
 
 object Axi4Lite32Cmd extends App {
   val const1 : Long = 0xdeadbeefL // module id
-  val const2 : Long = getGitHash()   // return githash id (the first 8 chars)
+  val const2 : Long = getGitHash
 
-  val p = checkParamEnv(
-    CmdModuleParams.default(const1 = const1, const2 = const2),
-    "CMD_MODULE_PARAMS")
-  println(write(p)(CmdModuleParams.rw))
+  val p = checkParamEnv(CmdModuleParams.default(const1 = const1, const2 = const2), "CMD_MODULE_PARAMS")
+  // println(write(p)(CmdModuleParams.rw))
 
-  val targetDir = EmitVerilog.generate(
-    new Axi4Lite32Cmd(p, debugprint=true)
-  )
+  val targetDir = EmitVerilog.generate(new Axi4Lite32Cmd(p, debugprint=true))
   AxiModuleParamsHelper.writeToJson(p, os.Path(targetDir))
 }

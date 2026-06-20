@@ -12,3 +12,7 @@ tests:
 sbttest:
 	@sbt test
 
+clean:
+	@rm -rf generated/*
+	@sbt clean
+

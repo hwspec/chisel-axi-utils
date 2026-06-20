@@ -2,42 +2,23 @@ import cocotb
 from axi_test_bridge.cocotb_axi_bridge import COCOTB_Bridge
 
 @cocotb.test()
-async def sim_cmd(dut):
-    cmd = COCOTB_Bridge(dut)
-    await cmd.setup()
+async def sim_cmd(cocotb_dut):
+    dut = COCOTB_Bridge(cocotb_dut)
+    await dut.setup()
     
-    c1 = await cmd.readWord(cmd.p.const1_rd)
-    c2 = await cmd.readWord(cmd.p.const2_rd)
-    assert c1 == cmd.p.const1
-    assert c2 == cmd.p.const2
-
-    async def softreset(cycles=5):
-        await cmd.writeWord(cmd.p.reset_wr, 1)
-        reset_done = 0
-        maxloopcnt = 1000
-        loopcnt = 0
-        while reset_done == 0:
-            reset_done = await cmd.readWord(cmd.p.reset_done_rd)
-            if loopcnt > maxloopcnt:
-                raise RuntimeError("Reached maxloopcnt. Something wrong")
-        
-    async def writeDut(val):
-        await cmd.writeWord(cmd.p.dut_wr, val)
-
-    async def readDut():
-        v = await cmd.readWord(cmd.p.dut_rd)
-        return v
+    await dut.expectWord(dut.p.const1_r, dut.p.const1)
+    await dut.expectWord(dut.p.const2_r, dut.p.const2)
 
     testval = 0x555aaa
-    await writeDut(testval)
-    v = await readDut()
-    cmd.writelog(f"{v:08x}\n")
+    await dut.writeWord(dut.p.dut_rw, testval)
+    v = await dut.readWord(dut.p.dut_rw)
+    dut.log.info(f"dutout: {v:08x}")
     assert v == testval
 
-    await softreset()
+    await dut.softReset()
     
-    v = await readDut()
-    cmd.writelog(f"{v:08x}\n")
+    v = await dut.readWord(dut.p.dut_rw)
+    dut.log.info(f"dutout: {v:08x}")
     assert v == 0
 
-    cmd.writelog("Done!!\n")
+    dut.log.info("Done!!\n")

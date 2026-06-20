@@ -17,7 +17,7 @@ test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
 	@PARAMFN=$(SRCDIR)/Cmd_params.json $(MAKE) sim MODULE=tb_cmd TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
-	@cat output.txt
+	@cat output.log
 
 $(SRCDIR)/$(HWMODULENAME).sv gen:
 	(cd ../../ ; sbt "runMain axi_examples.$(HWMODULENAME)")

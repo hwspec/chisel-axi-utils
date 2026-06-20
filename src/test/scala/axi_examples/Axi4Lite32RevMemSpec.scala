@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // See LICENSE file for details.
-package axiexamples
+package axi_examples
 
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.flatspec.AnyFlatSpec
