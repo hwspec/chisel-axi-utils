@@ -15,7 +15,7 @@ EXTRA_ARGS += --trace --trace-structs
 
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
-	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=sim_cmd TOPLEVEL=$(TOPNAME)
+	@PARAMFN=$(SRCDIR)/Cmd_params.json $(MAKE) sim MODULE=tb_cmd TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
 	@cat output.txt
 

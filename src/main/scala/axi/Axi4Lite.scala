@@ -56,8 +56,8 @@ trait AxiModuleParams {
   def moduleName: String
 }
 
-object ModuleParams {
-  def writejson[T <: AxiModuleParams: Writer](
+object AxiModuleParamsHelper {
+  def writeToJson[T <: AxiModuleParams: Writer](
                                               params: T,
                                               directory: os.Path
                                             ): Unit = {
@@ -66,5 +66,35 @@ object ModuleParams {
       write(params, indent = 2),
       createFolders = true
     )
+  }
+
+  def updateFromJson[T: ReadWriter](
+                                   current: T,
+                                   path: os.Path
+                                 ): T = {
+    val currentJson = writeJs(current).obj
+    val patchJson   = ujson.read(os.read(path)).obj
+
+    patchJson.foreach {
+      case (name, value) => currentJson(name) = value
+    }
+    read[T](currentJson)
+  }
+
+  def checkParamEnv[T: ReadWriter](current: T, envname: String) : T = {
+    val fn : Option[String] = sys.env.get(envname)
+    val updated = fn match {
+      case Some(fn) => AxiModuleParamsHelper.updateFromJson(current, os.Path(fn))
+      case None => current
+    }
+    updated
+  }
+
+  def getGitHash() : Long = {
+    import scala.sys.process._
+    val githashstr = "git rev-parse HEAD".!!.trim
+    val first8 = githashstr.take(8)
+    val githash: Long = java.lang.Long.parseUnsignedLong(first8, 16)
+    githash
   }
 }
