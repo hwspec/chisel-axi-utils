@@ -6,6 +6,7 @@ import axi.AxiModuleParamsHelper._
 import chisel3._
 import chisel3.util._
 import upickle.default._
+import chisel3.ExtModule
 
 case class CmdModuleParams( // Note: do not put default value here
                             // params suffixed with _r, _w, or _rw represent addresses
@@ -30,18 +31,15 @@ object CmdModuleParams {
     )
 }
 
-// replace Dut with your actual dut
-class Dut(bw : Int = 32) extends Module {
-  val io = IO(new Bundle {
-    val in  = Input(UInt(bw.W))
-    val valid = Input(Bool())
-    val out = Output(UInt(bw.W))
-  })
-  val valReg = RegInit(0.U(bw.W))
-  when(io.valid) {
-    valReg := io.in
-  }
-  io.out := valReg
+// Replace this with your dut
+class Dut(bw: Int = 32) extends ExtModule(Map("BW" -> bw)) {
+  val clock = IO(Input(Clock()))
+  val reset = IO(Input(Bool()))
+  val in    = IO(Input(UInt(bw.W)))
+  val valid = IO(Input(Bool()))
+  val out   = IO(Output(UInt(bw.W)))
+
+  addPath("verilog/Cmd/Dut.v")
 }
 
 class Axi4Lite32Cmd(p : CmdModuleParams, debugprint: Boolean = false)
@@ -64,14 +62,13 @@ class Axi4Lite32Cmd(p : CmdModuleParams, debugprint: Boolean = false)
     softResetReg := false.B
     softResetDoneReg := true.B
   }
-  val combinedReset: AsyncReset = (softResetReg || reset.asBool).asAsyncReset
+  val combinedReset = (softResetReg || reset.asBool)
 
-  // instantiate your dut here
-  val dut = withReset(combinedReset) {
-    Module(new Dut())
-  }
-  dut.io.in := 0.U
-  dut.io.valid := false.B
+  val dut = Module(new Dut(bw))
+  dut.clock := clock
+  dut.reset := combinedReset
+  dut.in := 0.U
+  dut.valid := false.B
 
   // -----------------------------
   // AXI-lite regs
@@ -116,8 +113,8 @@ class Axi4Lite32Cmd(p : CmdModuleParams, debugprint: Boolean = false)
       softResetDoneReg := false.B
       bresp := OKAY.U
     }.elsewhen(a === p.dut_rw.U) {
-      dut.io.valid := true.B
-      dut.io.in := wHoldDataReg
+      dut.valid := true.B
+      dut.in := wHoldDataReg
     }.otherwise {
       brespReg := AxiLiteResp.SLVERR.U
     }
@@ -169,7 +166,7 @@ class Axi4Lite32Cmd(p : CmdModuleParams, debugprint: Boolean = false)
       rdataReg := softResetDoneReg
       rstate := RState.COMPLETED
     }.elsewhen(araddr === p.dut_rw.U) {
-      rdataReg := dut.io.out
+      rdataReg := dut.out
       rstate := RState.COMPLETED
     }.otherwise {
       if (debugprint) printf("%d: bad read req %d\n", cycles, araddr)
