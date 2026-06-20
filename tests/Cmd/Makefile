@@ -9,6 +9,7 @@ HWMODULENAME=Axi4Lite32Cmd
 SRCDIR = $(abspath ../../generated/$(HWMODULENAME))
 VERILOG_SOURCES += $(SRCDIR)/user_accel_bd_wrapper.v $(SRCDIR)/*.sv
 VERILOG_SOURCES += $(SRCDIR)/verification/*.sv
+VERILOG_SOURCES += $(abspath ../../verilog/Cmd/)/*.v # user verilog module
 
 WAVES = 1
 EXTRA_ARGS += --trace --trace-structs
