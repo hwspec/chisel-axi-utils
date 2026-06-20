@@ -18,7 +18,7 @@ test : $(SRCDIR)/$(HWMODULENAME).sv
 	@cat output.txt
 
 $(SRCDIR)/$(HWMODULENAME).sv :
-	(cd ../../ ; sbt "runMain axiexamples.Axi4Lite32RevMem")
+	(cd ../../ ; sbt "runMain axi_examples.Axi4Lite32RevMem")
 
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
