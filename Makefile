@@ -1,18 +1,24 @@
-.PHONY: sbttest tests
 
-all: sbttest tests
+TARGETS=cocotb chiselsim
+.PHONY: $(TARGETS) clean
+
+COCOTBTESTS=RevMem Cmd TestQ
+
+all: $(TARGETS)
 
 # cocotb tests
-tests:
-	@make -C tests/Cmd
-	@make -C tests/TestQ
-	@make -C tests/RevMem
+cocotb:
+	@for tt in $(COCOTBTESTS); do \
+		$(MAKE) -C tests/$$tt || exit $$?; \
+	done
 
 # Chisel test
-sbttest:
+chiselsim:
 	@sbt test
 
 clean:
+	@for tt in $(COCOTBTESTS); do \
+		$(MAKE) -C tests/$$tt clean || exit $$?; \
+	done
 	@rm -rf generated/*
 	@sbt clean
-

@@ -32,30 +32,78 @@ package axi_examples
 
 import axi._
 import axi.AxiLiteResp._
+import axi.AxiModuleParamsHelper._
+import upickle.default._
 import chisel3._
 import chisel3.util._
-import firrtl.ir.BundleType
 
-case object TestQAXIDef extends AxiAddrMapBase {
-  // definition to export
-  val addrMapEntries = Seq(
-    AddrMapEntry("const1_rd",     0x0),
-    AddrMapEntry("const2_rd",     0x4),
-    AddrMapEntry("reset_wr",      0x8),
-    AddrMapEntry("reset_done_rd", 0xc),
-    AddrMapEntry("commit_wr",     0x20), // takes rowid and commit staging to the input Q
-    AddrMapEntry("startfeed_wr",  0x30), // start feeding data after filling up the input fifo
-    AddrMapEntry("drained_rd",    0x34),
-    AddrMapEntry("inqcnt_rd",     0x38), // returns the input Q count
-    AddrMapEntry("outq_rd",       0x40),
-    AddrMapEntry("outqcnt_rd",    0x44),
-    AddrMapEntry("fillup_wr",     0x1000), // filling up a staging buf. 0x1008 means 64-bit position.
-  )
-  checkaddr(addrMapEntries) // sanity check
-
-  // internal definition
-  val RESET_CYCLES = 8 // soft reset
+case class TestQModuleParams( // Note: do not put default value here
+                              // DefParams
+                              soft_reset_rw: Long,
+                              // module addr params
+                              const1_r : Long,
+                              const2_r : Long,
+                              commit_w : Long, // takes rowid and commit staging to the input Q
+                              start_feed_w : Long, // start feeding data after filling up the input fifo
+                              drained_r : Long,
+                              inq_cnt_r : Long, // returns the input Q count
+                              outq_r : Long,
+                              outq_cnt_r : Long,
+                              fillup_w : Long, // filling up a staging buf. 0x1008 means 64-bit position.
+                              // internal definition
+                              reset_cycles : Int, // soft reset
+                              const1: Long,
+                              const2 : Long,
+                              // design params
+                              npxs : Int,
+                              nrows : Int,
+                              pxbw : Int,
+                              inqsize : Int,
+                              outqsize : Int,
+                              threshold : Int,
+                            ) extends AxiModuleParams with AxiModuleDefParams
+{
+  val moduleName = "TestQ"
 }
+
+object TestQModuleParams {
+  implicit val rw: ReadWriter[TestQModuleParams] = macroRW
+
+  def default(const1: Long, const2: Long,
+              npxs: Int = 64, nrows: Int = 32, pxbw: Int = 12,
+              inqsize: Int = 1024, outqsize : Int = 16, threshold : Int= 20
+             ): TestQModuleParams =
+    new TestQModuleParams(soft_reset_rw = 0x0,
+      const1 = const1, const2 = const2,
+      const1_r = 0x10, const2_r = 0x14,
+      commit_w = 0x20, start_feed_w = 0x30, drained_r = 0x34, inq_cnt_r = 0x38,
+      outq_r = 0x40, outq_cnt_r = 0x44, fillup_w = 0x1000,
+      reset_cycles = 8,
+      npxs = npxs, nrows = nrows, pxbw = pxbw,
+      inqsize = inqsize, outqsize = outqsize, threshold = threshold,
+    )
+}
+
+//case object TestQAXIDef extends AxiAddrMapBase {
+//  // definition to export
+//  val addrMapEntries = Seq(
+//    AddrMapEntry("const1_rd",     0x0),
+//    AddrMapEntry("const2_rd",     0x4),
+//    AddrMapEntry("reset_wr",      0x8),
+//    AddrMapEntry("reset_done_rd", 0xc),
+//    AddrMapEntry("commit_wr",     0x20), // takes rowid and commit staging to the input Q
+//    AddrMapEntry("startfeed_wr",  0x30), // start feeding data after filling up the input fifo
+//    AddrMapEntry("drained_rd",    0x34),
+//    AddrMapEntry("inqcnt_rd",     0x38), // returns the input Q count
+//    AddrMapEntry("outq_rd",       0x40),
+//    AddrMapEntry("outqcnt_rd",    0x44),
+//    AddrMapEntry("fillup_wr",     0x1000), // filling up a staging buf. 0x1008 means 64-bit position.
+//  )
+//  checkaddr(addrMapEntries) // sanity check
+//
+//  // internal definition
+//  val RESET_CYCLES = 8 // soft reset
+//}
 
 // dut: an image processor example
 //
@@ -112,19 +160,13 @@ class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int,
   }
 }
 
-class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
-                       npxs : Int = 128,
-                       nrows : Int = 32,
-                       pxbw : Int = 12,
-                       inqsize : Int = 1024,
-                       outqsize : Int = 16,
-                       threshold : Int = 20,
-                       debugprint: Boolean = false)
+class Axi4Lite32TestQ(p : TestQModuleParams,
+                      debugprint: Boolean = false)
   extends Module with HasAxiLite32IO {
   val S = IO(new AxiLite32IO())
 
   val axibw = 32
-  val nbitsperrow = npxs * pxbw
+  val nbitsperrow = p.npxs * p.pxbw
   val nwordsperrow = (nbitsperrow + axibw - 1) / axibw
   val nbytesperrow = nwordsperrow * (axibw / 8)
 
@@ -135,10 +177,8 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
     println(f"nbytesperrow : ${nbytesperrow}")
   }
 
-  require(threshold < (1 << pxbw), f"threshold should be less than ${1 << pxbw}: ${threshold}")
+  require(p.threshold < (1 << p.pxbw), f"threshold should be less than ${1 << p.pxbw}: ${p.threshold}")
   require(nbitsperrow < 4096, "npxs*pxbw should be less equal than 4096")
-
-  import TestQAXIDef._
 
   // cycle counter for convenience
   val (cycles, wrap) = Counter(true.B, 1 << 16)
@@ -146,7 +186,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   // soft reset handling logic for dut
   val softResetReg = RegInit(false.B)
   val softResetDoneReg = RegInit(false.B)
-  val resetCounterReg = RegInit(0.U(log2Ceil(RESET_CYCLES).W))
+  val resetCounterReg = RegInit(0.U(log2Ceil(p.reset_cycles).W))
   when(resetCounterReg > 0.U) {
     resetCounterReg := resetCounterReg - 1.U
   }.otherwise {
@@ -157,39 +197,39 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
   // instantiate your dut here
   val dut = withReset(combinedReset) {
-    Module(new BinImageCount(npxs = npxs, pxbw = pxbw, nrows = nrows, threshold = threshold,
+    Module(new BinImageCount(npxs = p.npxs, pxbw = p.pxbw, nrows = p.nrows, threshold = p.threshold,
       outbw = axibw, debugprint = debugprint))
   }
-  dut.io.in := 0.U.asTypeOf(Vec(npxs, UInt(pxbw.W)))
+  dut.io.in := 0.U.asTypeOf(Vec(p.npxs, UInt(p.pxbw.W)))
   dut.io.rowid := 0.U
   dut.io.valid := false.B
   dut.io.out.ready := false.B
 
-  val outputQ = Module(new Queue(UInt(axibw.W), entries = outqsize))
+  val outputQ = Module(new Queue(UInt(axibw.W), entries = p.outqsize))
   outputQ.io.enq.valid := false.B
   outputQ.io.enq.bits.asUInt := 0.U
   outputQ.io.deq.ready := false.B
   outputQ.io.enq <> dut.io.out
 
   class RowData(npxs: Int, pxbw: Int) extends Bundle {
-    val rowid = UInt(log2Ceil(nrows).W)
+    val rowid = UInt(log2Ceil(p.nrows).W)
     val pixels = Vec(npxs, UInt(pxbw.W))
   }
 
-  val stagingPixelsReg = RegInit(0.U((npxs * pxbw).W))
+  val stagingPixelsReg = RegInit(0.U((p.npxs * p.pxbw).W))
 
-  val inputQ = Module(new Queue(new RowData(npxs, pxbw), entries = inqsize))
+  val inputQ = Module(new Queue(new RowData(p.npxs, p.pxbw), entries = p.inqsize))
   inputQ.io.enq.valid := false.B
-  inputQ.io.enq.bits := 0.U.asTypeOf(new RowData(npxs, pxbw))
+  inputQ.io.enq.bits := 0.U.asTypeOf(new RowData(p.npxs, p.pxbw))
   inputQ.io.deq.ready := false.B
 
   // staging
   val stagingRowPixelsReg = RegInit(VecInit(Seq.fill(nwordsperrow)(0.U(axibw.W))))
-  val stagingRowIDReg = RegInit(0.U(log2Ceil(nrows).W))
+  val stagingRowIDReg = RegInit(0.U(log2Ceil(p.nrows).W))
   val commitReg = RegInit(false.B)
   val stagingbits = stagingRowPixelsReg.asUInt
 
-  inputQ.io.enq.bits.pixels := stagingbits(npxs * pxbw - 1, 0).asTypeOf(Vec(npxs, UInt(pxbw.W)))
+  inputQ.io.enq.bits.pixels := stagingbits(p.npxs * p.pxbw - 1, 0).asTypeOf(Vec(p.npxs, UInt(p.pxbw.W)))
   inputQ.io.enq.bits.rowid := stagingRowIDReg
   when(commitReg) {
     inputQ.io.enq.valid := true.B // Note: the producer check inq cnt
@@ -202,7 +242,7 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
   }
 
   val inputFeedStatusReg = RegInit(InputFeedSeq.Idle)
-  val drainingCntReg = RegInit(0.U(log2Ceil(inqsize).W))
+  val drainingCntReg = RegInit(0.U(log2Ceil(p.inqsize).W))
   val drainedReg = RegInit(false.B)
 
   when(inputFeedStatusReg === InputFeedSeq.Feeding) {
@@ -266,24 +306,24 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
     when(!fullWrite) { // support full write only for this example
       bresp := SLVERR.U
-    }.elsewhen(a === axiaddrmap("reset_wr").U) {
+    }.elsewhen(a === p.soft_reset_rw.U) {
       if (debugprint) printf("%d: reset wr\n", cycles)
       softResetReg := true.B
-      resetCounterReg := RESET_CYCLES.U
+      resetCounterReg := p.reset_cycles.U
       softResetDoneReg := false.B
       bresp := OKAY.U
-    }.elsewhen(a === axiaddrmap("commit_wr").U) {
+    }.elsewhen(a === p.commit_w.U) {
       if (debugprint) printf("%d: commit wr: rowid=%d\n", cycles, wHoldDataReg)
       stagingRowIDReg := wHoldDataReg
       commitReg := true.B
-    }.elsewhen(a === axiaddrmap("startfeed_wr").U) {
+    }.elsewhen(a === p.start_feed_w.U) {
       if (debugprint) printf("%d: startfeed wr\n", cycles)
       inputFeedStatusReg := InputFeedSeq.Feeding
-      drainingCntReg := nrows.U // tentatively.  add "draincycles_wr"
+      drainingCntReg := p.nrows.U // tentatively.  add "draincycles_wr"
       drainedReg := false.B
-    }.elsewhen(a >= axiaddrmap("fillup_wr").U &&
-      a < (axiaddrmap("fillup_wr") + nbytesperrow).U) {
-      val wordoffset = ((a - axiaddrmap("fillup_wr").U) >> 2.U)(log2Ceil(nwordsperrow) - 1,0)
+    }.elsewhen(a >= p.fillup_w.U &&
+      a < (p.fillup_w + nbytesperrow).U) {
+      val wordoffset = ((a - p.fillup_w.U) >> 2.U)(log2Ceil(nwordsperrow) - 1,0)
       if (debugprint) printf("%d: filling staging pixels: %x at %d\n", cycles, wHoldDataReg, wordoffset )
       stagingRowPixelsReg(wordoffset) := wHoldDataReg
     }.otherwise {
@@ -327,37 +367,37 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 
     val rstate = WireDefault(RState.READY2READ)
 
-    when(araddr === axiaddrmap("const1_rd").U) {
+    when(araddr === p.const1_r.U) {
       if (debugprint) printf("%d: const1 rd\n", cycles)
-      rdataReg := const1.U
+      rdataReg := p.const1.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("const2_rd").U) {
+    }.elsewhen(araddr === p.const2_r.U) {
       if (debugprint) printf("%d: const2 rd\n", cycles)
-      rdataReg := const2.U
+      rdataReg := p.const2.U
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("reset_done_rd").U) {
+    }.elsewhen(araddr === p.soft_reset_rw.U) {
       if (debugprint) printf("%d: reset done rd\n", cycles)
       rdataReg := softResetDoneReg
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("drained_rd").U) {
+    }.elsewhen(araddr === p.drained_r.U) {
       if (debugprint) printf("%d: drained %d\n", cycles, drainedReg)
       rdataReg := drainedReg
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("inqcnt_rd").U) {
+    }.elsewhen(araddr === p.inq_cnt_r.U) {
       if (debugprint) printf("%d: inqcnt rd %d\n", cycles, inputQ.io.count)
       rdataReg := inputQ.io.count
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("outq_rd").U) {
+    }.elsewhen(araddr === p.outq_r.U) {
       outputQ.io.deq.ready := true.B
       if (debugprint) printf("%d: out rd valid=%d bits=%d\n", cycles
         , outputQ.io.deq.valid, outputQ.io.deq.bits)
       when(outputQ.io.deq.valid) {
         rdataReg := outputQ.io.deq.bits
       }.otherwise {
-        rdataReg := const1.U
+        rdataReg := p.const1.U
       }
       rstate := RState.COMPLETED
-    }.elsewhen(araddr === axiaddrmap("outqcnt_rd").U) {
+    }.elsewhen(araddr === p.outq_cnt_r.U) {
       if (debugprint) printf("%d: outqcnt rd %d\n", cycles, outputQ.io.count)
       rdataReg := outputQ.io.count
       rstate := RState.COMPLETED
@@ -377,9 +417,8 @@ class Axi4Lite32TestQ (const1: Long = 0xdeadbeefL, const2: Long = 0xfeedcafeL,
 }
 
 object Axi4Lite32TestQ extends App {
-  import TestQAXIDef._
   val const1 : Long = 0xdeadbeefL // module id
-  val const2 : Long = githash()   // return githash id (the first 8 chars)
+  val const2 : Long = getGitHash   // return githash id (the first 8 chars)
   val npxs : Int = 8
   val nrows : Int = 4
   val pxbw : Int = 12
@@ -387,14 +426,11 @@ object Axi4Lite32TestQ extends App {
   val outqsize : Int = 16
   val threshold : Int = 20
 
-  val consts = Map("const1" -> const1, "const2" -> const2,
-    "npxs" -> npxs.toLong, "nrows" -> nrows.toLong, "pxbw" -> pxbw.toLong,
-    "inqsize" -> inqsize.toLong, "outqsize" -> outqsize.toLong, "threshold" -> threshold.toLong)
-  EmitVerilog.generate(
-    new Axi4Lite32TestQ(const1 = const1, const2 = const2, debugprint=true,
-      npxs = npxs, nrows = nrows, pxbw = pxbw, inqsize = inqsize, outqsize = outqsize,
-      threshold = threshold),
-    addrmap = Some(TestQAXIDef),
-    constmap = Some(consts)
-  )
+  val p = checkParamEnv(
+    TestQModuleParams.default(const1 = const1, const2 = const2,
+      npxs = npxs, nrows = nrows, pxbw = pxbw,
+      inqsize = inqsize, outqsize = outqsize, threshold = threshold),
+    "TESTQ_MODULE_PARAMS")
+
+  EmitVerilog.generate(new Axi4Lite32TestQ(p), p)
 }

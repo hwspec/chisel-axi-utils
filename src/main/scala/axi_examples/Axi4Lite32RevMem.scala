@@ -3,19 +3,37 @@
 package axi_examples
 
 import axi._
+import axi.AxiModuleParamsHelper._
+import upickle.default._
 
 import chisel3._
 import chisel3.util._
 
-class Axi4Lite32RevMem(nwords: Int = 128, AxiAddrBW: Int = 32) extends Module
-  with HasAxiLite32IO {
+case class RevMemModuleParams( // Note: do not put default value here
+                               // DefParams
+                               soft_reset_rw: Long,
+                               // module params
+                               n_words: Int,
+                             ) extends AxiModuleParams with AxiModuleDefParams
+{
+  val moduleName = "RevMem"
+}
 
+object RevMemModuleParams {
+  implicit val rw: ReadWriter[RevMemModuleParams] = macroRW
+
+  def default(n_words: Int) : RevMemModuleParams =
+    new RevMemModuleParams(soft_reset_rw = 0x0, n_words = n_words)
+}
+
+class Axi4Lite32RevMem(c : RevMemModuleParams) extends Module with HasAxiLite32IO {
+  val AxiAddrBW: Int = 32
   val S = IO(new AxiLite32IO(AxiAddrBW))
 
-  val mem = SyncReadMem(nwords, Vec(4, UInt(8.W))) // each word is 4 bytes
+  val mem = SyncReadMem(c.n_words, Vec(4, UInt(8.W))) // each word is 4*8 bytes
 
   def wordIdx(byteAddr: UInt) : UInt = {
-    val idxW = log2Ceil(nwords)
+    val idxW = log2Ceil(c.n_words)
     (byteAddr >> 2)(idxW - 1, 0)
   }
 
@@ -101,7 +119,7 @@ class Axi4Lite32RevMem(nwords: Int = 128, AxiAddrBW: Int = 32) extends Module
     rFiredReg := rFiredReg + 1.U
   }.elsewhen(rvalidPipe) {
     rvalidReg := true.B
-    when(araddrHoldReg === (nwords*4).U) {
+    when(araddrHoldReg === (c.n_words*4).U) {
       rdataReg := (rFiredReg << 16) | arFiredReg
     }.otherwise {
       rdataReg := memOutU32
@@ -115,5 +133,10 @@ class Axi4Lite32RevMem(nwords: Int = 128, AxiAddrBW: Int = 32) extends Module
 
 object Axi4Lite32RevMem extends App {
   import axi.EmitVerilog
-  EmitVerilog.generate(new Axi4Lite32RevMem())
+
+  val p = checkParamEnv(
+    RevMemModuleParams.default(n_words=32),
+    "REVMEM_MODULE_PARAMS")
+
+  EmitVerilog.generate(new Axi4Lite32RevMem(p), p)
 }

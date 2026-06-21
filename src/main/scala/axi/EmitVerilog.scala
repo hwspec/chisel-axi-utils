@@ -11,6 +11,7 @@ import java.nio.file.{Files, Paths}
 import scala.io.Source
 import scala.reflect.ClassTag
 import scala.util.Using
+import upickle.default._
 
 object EmitVerilog {
   def readfilelist(filelistfn: String) : List[String] = {
@@ -25,11 +26,12 @@ object EmitVerilog {
       List()
   }
 
-  def apply(gen: => RawModule) : Unit = {
-    generate(gen)
-  }
+//  def apply(gen: => RawModule) : Unit = {
+//    generate(gen)
+//  }
 
-  def generate[T <: RawModule : ClassTag](gen: => T,
+  def generate[T <: RawModule : ClassTag, P <: AxiModuleParams: Writer](gen: => T,
+                                          params: P,
                                           firtoolOpts : Array[String] = Array(
                                             "--disable-all-randomization",
                                             "--strip-debug-info",
@@ -61,6 +63,10 @@ object EmitVerilog {
       val flist = readfilelist(targetdir + "/filelist.f")
       VivadoScript.generate(flist,  topname, targetdir, opts("vivado"))
     }
+
+    AxiModuleParamsHelper.writeToJson(params, os.Path(targetdir, os.pwd))
+
+    // remove below
     addrmap match {
       case Some(am) => am.writeAddrFile(targetdir + "/addrmap.txt", constmap)
       case None =>

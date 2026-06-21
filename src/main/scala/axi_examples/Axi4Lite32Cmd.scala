@@ -3,15 +3,18 @@ package axi_examples
 import axi._
 import axi.AxiLiteResp._
 import axi.AxiModuleParamsHelper._
+import upickle.default._
+
 import chisel3._
 import chisel3.util._
-import upickle.default._
 import chisel3.ExtModule
 
 case class CmdModuleParams( // Note: do not put default value here
                             // params suffixed with _r, _w, or _rw represent addresses
-                            const1_r : Long, const2_r : Long,
+                            // DefParams
                             soft_reset_rw : Long,
+                            // module params
+                            const1_r : Long, const2_r : Long,
                             dut_rw : Long,
                             // constant definition
                             const1: Long, const2: Long,
@@ -26,7 +29,7 @@ object CmdModuleParams {
 
   def default(const1: Long, const2: Long) : CmdModuleParams =
     new CmdModuleParams(
-      const1_r = 0x0, const2_r = 0x4, soft_reset_rw = 0x10, dut_rw = 0x20,
+      soft_reset_rw = 0x0, const1_r = 0x10, const2_r = 0x14,  dut_rw = 0x20,
       const1 = const1, const2 = const2, reset_cycles = 8
     )
 }
@@ -187,9 +190,9 @@ object Axi4Lite32Cmd extends App {
   val const1 : Long = 0xdeadbeefL // module id
   val const2 : Long = getGitHash
 
-  val p = checkParamEnv(CmdModuleParams.default(const1 = const1, const2 = const2), "CMD_MODULE_PARAMS")
-  // println(write(p)(CmdModuleParams.rw))
+  val p = checkParamEnv(
+    CmdModuleParams.default(const1 = const1, const2 = const2),
+    "CMD_MODULE_PARAMS")
 
-  val targetDir = EmitVerilog.generate(new Axi4Lite32Cmd(p, debugprint=true))
-  AxiModuleParamsHelper.writeToJson(p, os.Path(targetDir))
+  EmitVerilog.generate(new Axi4Lite32Cmd(p, debugprint=true), p)
 }

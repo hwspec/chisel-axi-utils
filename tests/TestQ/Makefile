@@ -25,9 +25,9 @@ EXTRA_ARGS += --trace --trace-structs
 
 test : $(SRCDIR)/$(HWMODULENAME).sv
 	@echo $(VERILOG_SOURCES)
-	@ADDRMAPFN=$(SRCDIR)/addrmap.txt $(MAKE) sim MODULE=tb_testq TOPLEVEL=$(TOPNAME)
+	@PARAMFN=$(SRCDIR)/TestQ_params.json $(MAKE) sim MODULE=tb_testq TOPLEVEL=$(TOPNAME)
 	@echo -e "\n[Output]"
-	@cat output.txt
+	@cat output.log
 
 $(SRCDIR)/$(HWMODULENAME).sv :
 	(cd ../../ ; sbt "runMain axi_examples.$(HWMODULENAME)")

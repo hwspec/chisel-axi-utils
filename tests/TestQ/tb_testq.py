@@ -1,45 +1,26 @@
 import cocotb
 
-from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
+from axi_test_bridge.cocotb_axi_bridge import COCOTB_Bridge
 
 @cocotb.test()
-async def sim_simple(dut):
+async def sim_simple(cocotb_dut):
 
-    tt = COCOTB_Bridge(dut) # tt = test top
+    tt = COCOTB_Bridge(cocotb_dut) # tt = test top
     await tt.setup()
 
-    npxs = tt.addrmap.npxs
-    nrows = tt.addrmap.nrows
-    pxbw = tt.addrmap.pxbw
-    threshold = tt.addrmap.threshold
+    npxs = tt.p.npxs
+    nrows = tt.p.nrows
+    pxbw = tt.p.pxbw
+    threshold = tt.p.threshold
     axibw = 32
 
-    # helper functions
-    async def readval(k):
-        addr = getattr(tt.addrmap, k)
-        return await tt.readWord(addr)
-
-    async def writeval(k, v, offset = 0):
-        addr = getattr(tt.addrmap, k)
-        await tt.writeWord(addr + offset, v)
-
-    async def softreset(cycles=5):
-        await writeval("reset_wr", 1)
-        reset_done = 0
-        maxloopcnt = 1000
-        loopcnt = 0
-        while reset_done == 0:
-            reset_done = await readval("reset_done_rd")
-            if loopcnt > maxloopcnt:
-                raise RuntimeError("Reached maxloopcnt. Something wrong")
-
     async def startfeed() -> None:
-        await writeval("startfeed_wr", 1)
-        inqcnt = await readval("inqcnt_rd")
+        await tt.writeWord(tt.p.start_feed_w, 1)
+        inqcnt = await tt.readWord(tt.p.inq_cnt_r)
         assert inqcnt > 0
         done = False
         while not done:
-            drained = await readval("drained_rd")
+            drained = await tt.readWord(tt.p.drained_r)
             if drained > 0:
                 done = True
 
@@ -62,17 +43,17 @@ async def sim_simple(dut):
         packedpxs = pack_pixels(pxs, pxbw)
         words = split2axiwords(packedpxs)
         for i, w in enumerate(words):
-            await writeval("fillup_wr", w, offset = i * 4)
-        await writeval("commit_wr", rowid)
+            await tt.writeWord(tt.p.fillup_w + (i*4), w)
+        await tt.writeWord(tt.p.commit_w, rowid)
 
 
     # test start here
-    c1 = await readval("const1_rd")
-    c2 = await readval("const2_rd")
-    assert c1 == tt.addrmap.const1
-    assert c2 == tt.addrmap.const2
+    c1 = await tt.readWord(tt.p.const1_r)
+    c2 = await tt.readWord(tt.p.const2_r)
+    assert c1 == tt.p.const1
+    assert c2 == tt.p.const2
 
-    softreset()
+    await tt.softReset()
 
     rowpxs = [threshold + 2 if i == 5 else 0 for i in range(npxs)]
     for i in range(nrows):
@@ -80,14 +61,13 @@ async def sim_simple(dut):
 
     await startfeed()
 
-
-    outqcnt = await readval("outqcnt_rd")
+    outqcnt = await tt.readWord(tt.p.outq_cnt_r)
     assert outqcnt == 1
 
-    outq = await readval("outq_rd")
+    outq = await tt.readWord(tt.p.outq_r)
     assert outq == nrows
 
-    outqcnt = await readval("outqcnt_rd")
+    outqcnt = await tt.readWord(tt.p.outq_cnt_r)
     assert outqcnt == 0
 
-    tt.writelog("Done!!\n")
+    tt.log.info("Done!!\n")

@@ -1,5 +1,6 @@
 import cocotb
-from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
+from axi_test_bridge.cocotb_axi_bridge import COCOTB_Bridge
+import random
 
 def rev32bits(x: int):
     x &= 0xFFFFFFFF
@@ -10,23 +11,18 @@ def rev32bits(x: int):
     x = ((x & 0x0000FFFF) << 16) | ((x >> 16) & 0x0000FFFF)
     return x & 0xFFFFFFFF
 
-async def validateRevWord(rev, addr, input):
-    v = await rev.readWord(0)
-    ref = rev32bits(input)
+@cocotb.test
+async def tb_revmem(cocotb_dut):
+    dut = COCOTB_Bridge(cocotb_dut)
+    await dut.setup()
 
-    rev.writelog(f"{input:08x} => {v:08x}\n")
-    
-    assert v == ref, f"v={v:08x} ref={ref:08x}"
+    for i in range(0, dut.p.n_words):
+        addr = i*4
+        inp = random.getrandbits(32)
+        ref = rev32bits(inp)
+        await dut.writeWord(addr, inp)
+        v = await dut.readWord(addr)
+        # dut.log.info(f"in={inp:08x} ref={ref:08x} dut={v:08x}")
+        assert v == ref, f"in={inp:08x} ref={ref:08x} dut={v:08x}"
 
-@cocotb.test()
-async def tb_revmem(dut):
-    rev = COCOTB_Bridge(dut)
-    await rev.setup()
-
-    addr = 0
-    val = 0x1364e
-    await rev.writeWord(addr, val)
-    
-    await validateRevWord(rev, addr, val)
-
-    rev.writelog("Done!!\n")
+    dut.log.info("RevMem Verified!!\n")

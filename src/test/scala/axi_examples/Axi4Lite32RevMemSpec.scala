@@ -18,8 +18,10 @@ class Axi4Lite32RevMemSpec extends AnyFlatSpec with ChiselSim {
   }
 
   "test AxiList32RevMem" should "pass" in {
-    val nwords = 16
-    simulate(new Axi4Lite32RevMem(nwords = nwords)) { dut =>
+    val n_words = 16
+    val p = RevMemModuleParams.default(n_words)
+
+    simulate(new Axi4Lite32RevMem(p)) { dut =>
       val bfm = new Axi4Lite32BFM(dut)
       bfm.initMaster()
       bfm.reset()
@@ -35,7 +37,7 @@ class Axi4Lite32RevMemSpec extends AnyFlatSpec with ChiselSim {
         assert(rdata == ref, f"$rdata%08x, $ref%08x, $rresp")
       }
 
-      val (rdata, rresp) = bfm.read(nwords * 4)
+      val (rdata, rresp) = bfm.read(n_words * 4)
       val arfiredcnt = rdata & 0xffff
       val rfiredcnt = (rdata >> 16) & 0xffff
       println(f"arfiredcnt=$arfiredcnt")
