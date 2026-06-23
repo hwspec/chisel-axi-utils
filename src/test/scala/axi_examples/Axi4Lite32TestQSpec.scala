@@ -2,6 +2,7 @@
 // See LICENSE file for details.
 package axi_examples
 
+import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.flatspec.AnyFlatSpec
 import axi._
@@ -50,48 +51,56 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
         inqsize = inqsize, outqsize = outqsize, threshold = threshold),
       "TESTQ_MODULE_PARAMS")
 
+    def startFeed[D <: Module with HasAxiLite32IO](
+      bfm: Axi4Lite32BFM[D]
+    ) : Unit = {
+      bfm.writeVal(p.start_feed_w, 1)
+      assert(bfm.readVal(p.inq_cnt_r) > 0)
+      var done = false
+      while(!done) {
+        if (bfm.readVal(p.drained_r) > 0)
+          done = true
+      }
+    }
+
+    def commitRow[D <: Module with HasAxiLite32IO](
+       bfm: Axi4Lite32BFM[D], rowid : Int, pxs: List[Int]) : Unit = {
+      var tmp : BigInt = 0
+      for (e <- pxs.zipWithIndex) {
+        tmp = updateField(tmp, pos=e._2, v=e._1, bw=pxbw)
+      }
+      val nwords = ((npxs*pxbw) + axibw - 1)/axibw
+      for (i <- 0 until nwords) {
+        val v = readField(tmp, i, axibw)
+        bfm.writeVal(p.fillup_w, v, offset = i*4)
+      }
+      bfm.writeVal(p.commit_w, rowid)
+    }
+
+
     simulate(new Axi4Lite32TestQ(p, debugprint = true)) { dut =>
       val bfm = new Axi4Lite32BFM(dut)
       bfm.initMaster()
 
+      // check the module id
       bfm.expectVal(p.const1_r, const1)
       bfm.expectVal(p.const2_r, const2)
 
-      def startFeed() : Unit = {
-        bfm.writeVal(p.start_feed_w, 1)
-        assert(bfm.readVal(p.inq_cnt_r) > 0)
-        var done = false
-        while(!done) {
-          if (bfm.readVal(p.drained_r) > 0)
-            done = true
+      def testFixPattern() : Unit = {
+        bfm.softReset(p)
+        val rowpxs = List.tabulate(npxs) { i => if (i == 5) threshold + 2 else 0 }
+        for (i <- 0 until nrows) {
+          commitRow(bfm, i, rowpxs)
         }
+        val inqcnt = bfm.readVal(p.inq_cnt_r)
+        assert(inqcnt == nrows)
+        startFeed(bfm)
+        bfm.expectVal(p.outq_cnt_r, 1)
+        bfm.expectVal(p.outq_r, nrows)
+        bfm.expectVal(p.outq_cnt_r, 0)
       }
 
-      def commitRow(rowid : Int, pxs: List[Int]) : Unit = {
-        var tmp : BigInt = 0
-        for (e <- pxs.zipWithIndex) {
-          tmp = updateField(tmp, pos=e._2, v=e._1, bw=pxbw)
-        }
-        val nwords = ((npxs*pxbw) + axibw - 1)/axibw
-        for (i <- 0 until nwords) {
-          val v = readField(tmp, i, axibw)
-          bfm.writeVal(p.fillup_w, v, offset = i*4)
-        }
-        bfm.writeVal(p.commit_w, rowid)
-      }
-
-      bfm.softReset(p)
-
-      val rowpxs = List.tabulate(npxs) { i => if (i==5) threshold+2 else 0}
-      for (i <- 0 until nrows) {     commitRow(i, rowpxs)     }
-      val inqcnt = bfm.readVal(p.inq_cnt_r)
-      assert(inqcnt == nrows)
-
-      startFeed()
-
-      bfm.expectVal(p.outq_cnt_r, 1)
-      bfm.expectVal(p.outq_r, nrows)
-      bfm.expectVal(p.outq_cnt_r, 0)
+      for(i <- 0 until 3)  testFixPattern()
 
       println("Axi4Lite32TestQ test passed!")
     }
