@@ -53,21 +53,25 @@ async def sim_simple(cocotb_dut):
     assert c1 == tt.p.const1
     assert c2 == tt.p.const2
 
-    await tt.softReset()
+    async def testFixPattern():
+        await tt.softReset()
 
-    rowpxs = [threshold + 2 if i == 5 else 0 for i in range(npxs)]
-    for i in range(nrows):
-        await commitRow(i, rowpxs, pxbw)
+        rowpxs = [threshold + 2 if i == 5 else 0 for i in range(npxs)]
+        for i in range(nrows):
+            await commitRow(i, rowpxs, pxbw)
 
-    await startfeed()
+        await startfeed()
 
-    outqcnt = await tt.readWord(tt.p.outq_cnt_r)
-    assert outqcnt == 1
+        outqcnt = await tt.readWord(tt.p.outq_cnt_r)
+        assert outqcnt == 1
 
-    outq = await tt.readWord(tt.p.outq_r)
-    assert outq == nrows
+        outq = await tt.readWord(tt.p.outq_r)
+        assert outq == nrows
 
-    outqcnt = await tt.readWord(tt.p.outq_cnt_r)
-    assert outqcnt == 0
+        outqcnt = await tt.readWord(tt.p.outq_cnt_r)
+        assert outqcnt == 0
 
-    tt.log.info("Done!!\n")
+    for _ in range(0, 3):
+        await testFixPattern()
+
+    tt.log.info("Done!!")
