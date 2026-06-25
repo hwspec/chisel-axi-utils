@@ -66,6 +66,8 @@ object EmitVerilog {
 
     AxiModuleParamsHelper.writeToJson(params, os.Path(targetdir, os.pwd))
 
+    genCopyScript(targetdir)
+
     // remove below
     addrmap match {
       case Some(am) => am.writeAddrFile(targetdir + "/addrmap.txt", constmap)
@@ -86,12 +88,29 @@ object EmitVerilog {
     }
   }
 
-  def genAxiWrapper(targetdir : String, topname : String,
-                    axiwrappername : String = "") : Unit = {
-    val axitop = if (axiwrappername.isEmpty) {
-      topname + "_bd_wrapper"
-    } else axiwrappername
-    val fn = targetdir + "/" + axitop + ".v"
+  private def genCopyScript(targetDir: String) : Unit = {
+    val str =
+      s"""
+         |if [ -z "$$1" ] ; then
+         |	echo "usage: $$1 destdir"
+         |	exit 1
+         |fi
+         |
+         |targetdir=$$1
+         |scp *.v *.sv *.json $$targetdir
+         |
+         |""".stripMargin
+
+    val fn = targetDir + "/" + "copysrcto.sh"
+    writeto(fn, str, executable = true)
+  }
+
+  private def genAxiWrapper(targetDir : String, topName : String,
+                            axiWrapperName : String = "") : Unit = {
+    val axitop = if (axiWrapperName.isEmpty) {
+      topName + "_bd_wrapper"
+    } else axiWrapperName
+    val fn = targetDir + "/" + axitop + ".v"
 
     val str =
       s"""
@@ -120,7 +139,7 @@ object EmitVerilog {
         |
         |  wire s_axi_reset = ~s_axi_aresetn;
         |
-        |  $topname u_core (
+        |  $topName u_core (
         |    .clock           (s_axi_aclk),
         |    .reset           (s_axi_reset),
         |    .S_AXI_awaddr    (S_AXI_awaddr),

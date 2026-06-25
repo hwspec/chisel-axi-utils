@@ -3,6 +3,10 @@ python/axi_test_bridge.egg-info/
 *.class
 *.log
 
+tests/*/dump.vcd
+tests/*/results.xml
+tests/*/sim_build/
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 
