@@ -2,11 +2,24 @@
 # written by Kaz Yoshii <kazutomo.yoshii@gmail.com>
 
 import os, sys, time
+from pathlib import Path
+import json
+from types import SimpleNamespace
+import logging
+
 import pyaved
 
-from COCOTB_Bridge import readAddrMap
-
 class AVED_Bridge:
+    def readAddrMap(self):
+        fn = os.getenv("PARAMFN")
+        if fn is None:
+            raise RuntimeError("Environment variable PARAMFN is not set")
+
+        with open(fn) as f:
+            data = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
+
+        return data
+
     def aved_write32(self, addr, v):
         self.aved.write32(addr, v)
 
@@ -14,24 +27,26 @@ class AVED_Bridge:
         v = self.aved.read32(addr)
         return v
 
-    def __init__(self, base=0x1100000, dev="b1:00.0", logfn = ""):
+    def __init__(self, base=0x1100000, dev="b1:00.0", logfn = "output.log"):
         self.base = base
 
-        self.addrmap = self.readAddrMap()
-        
+        self.p = self.readAddrMap()
+
         self.aved = pyaved.AVED()
         self.aved.open(dev)
 
-        if len(logfn) > 0:
-            self.outputfn = logfn
-        else:
-            self.outputfn = "output.txt"
+        log_path = Path(logfn).resolve()
+        self.log = logging.getLogger("tblog")
+        self.log.setLevel(logging.INFO)
+        self.log.propagate = False
+        self.log.handlers.clear()
+        handler = logging.FileHandler(log_path, mode="w")
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        self.log.addHandler(handler)
 
-        if os.path.exists(self.outputfn):
-            os.remove(self.outputfn)
+        self.log.info("FPGA Emulation Initialized!\n")
 
-        self.writelog("FPGA Emulation Initialized!\n")
-        
     def writelog(self, txt):
         print(txt, end='')
         with open(self.outputfn, "a")  as f:
