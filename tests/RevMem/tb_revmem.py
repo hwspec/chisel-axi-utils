@@ -1,5 +1,5 @@
 import cocotb
-from axi_test_bridge.cocotb_axi_bridge import COCOTB_Bridge
+from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
 import random
 
 def rev32bits(x: int):

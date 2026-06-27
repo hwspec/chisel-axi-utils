@@ -3,23 +3,10 @@
 """
 Convert an AXI cocotb testbench into an FPGA testbench.
 
-Assumptions:
-  - SIM module name and SIM class name are the same.
-    Example: RevMemSIM.py contains class RevMemSIM
-
-  - FPGA module name and FPGA class name are the same.
-    Example: RevMemFPGA.py contains class RevMemFPGA
-
 Usage:
-  python conv_cocotb_to_fpga.py sim_test.py fpga_test.py \
-      --sim RevMemSIM \
-      --fpga RevMemFPGA
+  python conv_cocotb_to_fpga.py sim_test.py fpga_test.py
 
-Overwrite existing output:
-  python conv_cocotb_to_fpga.py sim_test.py fpga_test.py \
-      --sim RevMemSIM \
-      --fpga RevMemFPGA \
-      --force
+To overwrite existing output, use the --force option
 """
 
 from __future__ import annotations
@@ -33,11 +20,10 @@ import libcst.matchers as m
 class CocotbToFpgaTransformer(cst.CSTTransformer):
     def __init__(
         self,
-        sim: str,
         fpga: str,
         drop_setup: bool = True,
     ):
-        self.sim = sim
+        self.sim = 'COCOTB'
         self.fpga = fpga
         self.drop_setup = drop_setup
         self.generated_main = False
@@ -92,19 +78,37 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         if module_code == "cocotb" or module_code.startswith("cocotb."):
             return cst.RemoveFromParent()
 
-        # from RevMemSIM import RevMemSIM
+        # e.g.,
+        # from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
         # ->
-        # from RevMemFPGA import RevMemFPGA
-        if module_code == self.sim:
+        # from axi_test_bridge.aved_bridge import AVED_Bridge
+        if module_code == "axi_test_bridge.cocotb_bridge":
             return updated_node.with_changes(
-                module=cst.Name(self.fpga),
+                module=cst.Attribute(
+                    value=cst.Name("axi_test_bridge"),
+                    attr=cst.Name(f"{self.fpga.lower()}_bridge"),
+                ),
                 names=[
                     cst.ImportAlias(
-                        name=cst.Name(self.fpga),
+                        name=cst.Name(f"{self.fpga}_Bridge"),
                         comma=cst.MaybeSentinel.DEFAULT,
                     )
                 ],
             )
+
+        # from RevMemSIM import RevMemSIM
+        # ->
+        # from RevMemFPGA import RevMemFPGA
+#        if module_code == self.sim:
+#            return updated_node.with_changes(
+#                module=cst.Name(self.fpga),
+#                names=[
+#                    cst.ImportAlias(
+#                        name=cst.Name(self.fpga),
+#                        comma=cst.MaybeSentinel.DEFAULT,
+#                    )
+#                ],
+#            )
 
         return updated_node
 
@@ -195,16 +199,15 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         original_node: cst.Call,
         updated_node: cst.Call,
     ) -> cst.Call:
-        # RevMemSIM(dut)
-        # ->
-        # RevMemFPGA()
         if isinstance(updated_node.func, cst.Name):
-            if updated_node.func.value == self.sim:
+            # COCOTB_Bridge(cocotb_dut)
+            # ->
+            # AVED_Bridge()
+            if updated_node.func.value == "COCOTB_Bridge":
                 return updated_node.with_changes(
-                    func=cst.Name(self.fpga),
+                    func=cst.Name(f"{self.fpga}_Bridge"),
                     args=[],
                 )
-
         return updated_node
 
     # -------------------------
@@ -264,7 +267,6 @@ if __name__ == "__main__":
 
 def convert_code(
     source: str,
-    sim: str,
     fpga: str,
     drop_setup: bool = True,
 ) -> str:
@@ -272,7 +274,6 @@ def convert_code(
 
     transformed = module.visit(
         CocotbToFpgaTransformer(
-            sim=sim,
             fpga=fpga,
             drop_setup=drop_setup,
         )
@@ -299,15 +300,9 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "--sim",
-        required=True,
-        help="SIM backend class/module name, e.g. RevMemSIM",
-    )
-
-    parser.add_argument(
         "--fpga",
-        required=True,
-        help="FPGA backend class/module name, e.g. RevMemFPGA",
+        default="AVED",
+        help="FPGA backend name (default: %(default)s)",
     )
 
     parser.add_argument(
@@ -333,7 +328,6 @@ def main() -> None:
 
     converted = convert_code(
         source=source,
-        sim=args.sim,
         fpga=args.fpga,
         drop_setup=not args.keep_setup,
     )

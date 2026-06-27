@@ -62,3 +62,19 @@ class AVED_Bridge:
     def readWord(self, offset):
         self.checkOffset(offset, align=4)
         return self.aved_read32(self.base + offset)
+
+    def expectWord(self, offset, ref, msg = ""):
+        v = self.readWord(offset)
+        assert v == ref, msg
+
+    def softReset(self, maxloopcnt = 1000):
+        cycles = self.p.reset_cycles
+        self.writeWord(self.p.soft_reset_rw, 1)
+        reset_done = 0
+        loopcnt = 0
+        while reset_done == 0:
+            reset_done = self.readWord(self.p.soft_reset_rw)
+            if loopcnt > maxloopcnt:
+                raise RuntimeError("Reached maxloopcnt. Something wrong")
+            loopcnt += 1
+        return loopcnt

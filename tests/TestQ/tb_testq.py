@@ -1,6 +1,6 @@
 import cocotb
 
-from axi_test_bridge.cocotb_axi_bridge import COCOTB_Bridge
+from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
 
 @cocotb.test()
 async def sim_simple(cocotb_dut):

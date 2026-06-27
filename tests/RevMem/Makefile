@@ -20,7 +20,6 @@ test : $(SRCDIR)/$(HWMODULENAME).sv
 $(SRCDIR)/$(HWMODULENAME).sv :
 	(cd ../../ ; sbt "runMain axi_examples.Axi4Lite32RevMem")
 
-
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 clean::
