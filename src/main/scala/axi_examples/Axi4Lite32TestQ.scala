@@ -403,8 +403,8 @@ class Axi4Lite32TestQ(p : TestQModuleParams,
       rstate := RState.COMPLETED
     }.otherwise {
       if (debugprint) printf("%d: bad read req %d\n", cycles, araddr)
-      rrespReg := SLVERR.U
-      rdataReg := S.AXI.araddr(31, 0) // debug purpose
+      // rrespReg := SLVERR.U // with this, the host can only read 0xffffffff for any addresses on AVED
+      rdataReg := 0xbad00000L.U | S.AXI.araddr(31, 0)
       if (debugprint) printf(cf"arFire otherwise: addr=${S.AXI.araddr}%16x\n")
       rstate := RState.COMPLETED
     }

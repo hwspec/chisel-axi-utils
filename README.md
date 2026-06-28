@@ -32,20 +32,19 @@ SBT is the most common build tool in the Scala community. You can download it [h
 
 #### Verilator
 
-The Chisel unit tests require Verilator installed. Install it or build
-it locally:
+Chisel and cocotb require Verilator installed. Verilator 5.044 has been tested.
+
+To build and install it locally:
 
 ```bash
-git clone https://github.com/verilator/verilator.git && cd verilator
-git checkout tags/v5.044 -b v5.044build
-autoconf
-./configure --prefix=__INSTALLDIR__  # replace __INSTALLDIR__
-make
-make install
+sh misc/build_verilator.sh INSTDIR
+```
+
+NOTE: add INSTDIR/bin to PATH
 
 #### cocotb
 
-Requires Python 3.8+.
+Tested with Python 3.8+.
 
 Create a Python virtual environment and install required packages:
 
