@@ -46,26 +46,11 @@ NOTE: add INSTDIR/bin to PATH
 
 Tested with Python 3.8+.
 
-Create a Python virtual environment and install required packages:
+To setup a Python virtual environment and install required packages:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+make setup
 ```
-
-Deactivate the environment when finished:
-```bash
-deactivate
-```
-
-Please also install axi_test_bridge
-```bash
-cd python
-make install
-```
-
 
 ## Examples
 
