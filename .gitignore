@@ -18,3 +18,5 @@ hs_err_pid*
 /project
 /target
 /tests/*/fpga_*.py
+
+.venv/

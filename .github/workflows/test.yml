@@ -1,0 +1,37 @@
+name: Continuous Integration
+
+on: [push]
+
+jobs:
+  ci:
+#    if: ${{ false }}
+    name: ci
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Update
+        run: sudo apt-get update
+      - name: Cache Scala
+        uses: coursier/cache-action@v6
+      - name: Setup Scala
+        uses: coursier/setup-action@v1
+        with:
+          jvm: temurin:17
+          apps: sbt mill
+      - name: Setup Dependencies
+        run: sudo apt-get install -y ccache
+      - name: Initialize submodule
+        run: git submodule update --init --recursive
+      - name: Install Verilator
+        run: sudo apt-get install -y verilator gcc
+      - name: Show versions
+        run: |
+          java -version
+          sbt --version
+      - name: Setup chisel-axi-utils and run tests
+        shell: bash
+        run: |
+          make setup
+          source .venv/bin/activate
+          make
