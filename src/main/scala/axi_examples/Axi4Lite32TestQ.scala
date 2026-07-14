@@ -84,27 +84,6 @@ object TestQModuleParams {
     )
 }
 
-//case object TestQAXIDef extends AxiAddrMapBase {
-//  // definition to export
-//  val addrMapEntries = Seq(
-//    AddrMapEntry("const1_rd",     0x0),
-//    AddrMapEntry("const2_rd",     0x4),
-//    AddrMapEntry("reset_wr",      0x8),
-//    AddrMapEntry("reset_done_rd", 0xc),
-//    AddrMapEntry("commit_wr",     0x20), // takes rowid and commit staging to the input Q
-//    AddrMapEntry("startfeed_wr",  0x30), // start feeding data after filling up the input fifo
-//    AddrMapEntry("drained_rd",    0x34),
-//    AddrMapEntry("inqcnt_rd",     0x38), // returns the input Q count
-//    AddrMapEntry("outq_rd",       0x40),
-//    AddrMapEntry("outqcnt_rd",    0x44),
-//    AddrMapEntry("fillup_wr",     0x1000), // filling up a staging buf. 0x1008 means 64-bit position.
-//  )
-//  checkaddr(addrMapEntries) // sanity check
-//
-//  // internal definition
-//  val RESET_CYCLES = 8 // soft reset
-//}
-
 // dut: an image processor example
 //
 // The DUT consumes one image row per cycle.
@@ -195,6 +174,11 @@ class Axi4Lite32TestQ(p : TestQModuleParams,
   }
   val combinedReset: AsyncReset = (softResetReg || reset.asBool).asAsyncReset
 
+  class RowData(npxs: Int, pxbw: Int) extends Bundle {
+    val rowid = UInt(log2Ceil(p.nrows).W)
+    val pixels = Vec(npxs, UInt(pxbw.W))
+  }
+
   // instantiate your dut here
   val dut = withReset(combinedReset) {
     Module(new BinImageCount(npxs = p.npxs, pxbw = p.pxbw, nrows = p.nrows, threshold = p.threshold,
@@ -211,12 +195,8 @@ class Axi4Lite32TestQ(p : TestQModuleParams,
   outputQ.io.deq.ready := false.B
   outputQ.io.enq <> dut.io.out
 
-  class RowData(npxs: Int, pxbw: Int) extends Bundle {
-    val rowid = UInt(log2Ceil(p.nrows).W)
-    val pixels = Vec(npxs, UInt(pxbw.W))
-  }
 
-  val stagingPixelsReg = RegInit(0.U((p.npxs * p.pxbw).W))
+  //val stagingPixelsReg = RegInit(0.U((p.npxs * p.pxbw).W))
 
   val inputQ = Module(new Queue(new RowData(p.npxs, p.pxbw), entries = p.inqsize))
   inputQ.io.enq.valid := false.B
