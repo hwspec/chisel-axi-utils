@@ -189,24 +189,31 @@ class Axi4Lite32TestQ(p : TestQModuleParams,
   dut.io.valid := false.B
   dut.io.out.ready := false.B
 
-  val outputQ = Module(new Queue(UInt(axibw.W), entries = p.outqsize))
+  val outputQ = withReset(combinedReset) {
+    Module(new Queue(UInt(axibw.W), entries = p.outqsize))
+  }
   outputQ.io.enq.valid := false.B
   outputQ.io.enq.bits.asUInt := 0.U
   outputQ.io.deq.ready := false.B
   outputQ.io.enq <> dut.io.out
 
-
-  //val stagingPixelsReg = RegInit(0.U((p.npxs * p.pxbw).W))
-
-  val inputQ = Module(new Queue(new RowData(p.npxs, p.pxbw), entries = p.inqsize))
+  val inputQ = withReset(combinedReset) {
+    Module(new Queue(new RowData(p.npxs, p.pxbw), entries = p.inqsize))
+  }
   inputQ.io.enq.valid := false.B
   inputQ.io.enq.bits := 0.U.asTypeOf(new RowData(p.npxs, p.pxbw))
   inputQ.io.deq.ready := false.B
 
   // staging
-  val stagingRowPixelsReg = RegInit(VecInit(Seq.fill(nwordsperrow)(0.U(axibw.W))))
-  val stagingRowIDReg = RegInit(0.U(log2Ceil(p.nrows).W))
-  val commitReg = RegInit(false.B)
+  val stagingRowPixelsReg = withReset(combinedReset) {
+    RegInit(VecInit(Seq.fill(nwordsperrow)(0.U(axibw.W))))
+  }
+  val stagingRowIDReg = withReset(combinedReset) {
+    RegInit(0.U(log2Ceil(p.nrows).W))
+  }
+  val commitReg = withReset(combinedReset) {
+    RegInit(false.B)
+  }
   val stagingbits = stagingRowPixelsReg.asUInt
 
   inputQ.io.enq.bits.pixels := stagingbits(p.npxs * p.pxbw - 1, 0).asTypeOf(Vec(p.npxs, UInt(p.pxbw.W)))
@@ -221,9 +228,9 @@ class Axi4Lite32TestQ(p : TestQModuleParams,
     val Idle, Feeding, Draining = Value
   }
 
-  val inputFeedStatusReg = RegInit(InputFeedSeq.Idle)
-  val drainingCntReg = RegInit(0.U(log2Ceil(p.inqsize).W))
-  val drainedReg = RegInit(false.B)
+  val inputFeedStatusReg = withReset(combinedReset) { RegInit(InputFeedSeq.Idle) }
+  val drainingCntReg = withReset(combinedReset) { RegInit(0.U(log2Ceil(p.inqsize).W)) }
+  val drainedReg = withReset(combinedReset) { RegInit(false.B) }
 
   when(inputFeedStatusReg === InputFeedSeq.Feeding) {
     when(inputQ.io.count === 0.U) {
