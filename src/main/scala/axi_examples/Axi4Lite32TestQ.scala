@@ -107,9 +107,6 @@ class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int,
   })
   require(nrows > 3, "nrows must be greater than 3")
 
-  io.out.valid := false.B
-  io.out.bits := 0.U
-
   val bin = Wire(Vec(npxs, Bool()))
   for (i <- 0 until npxs) { bin(i) := io.in(i) >= threshold.U }
   val rowPopCount = PopCount(bin.asUInt)
@@ -118,24 +115,26 @@ class BinImageCount(npxs: Int, pxbw : Int, nrows: Int, threshold : Int,
 
   val outTotalReg = RegInit(0.U(outbw.W))
   val outTotalValidReg = RegInit(false.B)
+
   io.out.valid := outTotalValidReg
-  when(io.out.fire) {
-    io.out.bits := outTotalReg
-    outTotalReg := 0.U
-    outTotalValidReg := false.B
-  }
+  io.out.bits := outTotalReg
+
+  val outFifo = Module(new Queue(UInt(outbw.W), entries = 2))
+  outFifo.io.enq.valid := false.B
+  outFifo.io.enq.bits := 0.U
+  io.out <> outFifo.io.deq
 
   when(io.valid) {
     when(io.rowid === 0.U) {
-      printf("dut: first row\n")
+      printf("dut: first row : %d\n", rowPopCount)
       totalPopCountReg := rowPopCount
     }.elsewhen(io.rowid === (nrows-1).U) {
-      printf("dut: last row\n")
-      outTotalReg := totalPopCountReg + rowPopCount
-      outTotalValidReg := true.B
+      printf("dut: last row : %d %d\n", totalPopCountReg, rowPopCount)
+      outFifo.io.enq.valid := true.B
+      outFifo.io.enq.bits := totalPopCountReg + rowPopCount
       totalPopCountReg := 0.U
     }.otherwise {
-      printf("dut: %d row\n", io.rowid)
+      printf("dut: %d row : %d %d\n", io.rowid, totalPopCountReg, rowPopCount)
       totalPopCountReg :=  totalPopCountReg + rowPopCount
     }
   }

@@ -29,7 +29,7 @@ object CmdModuleParams {
 
   def default(const1: Long, const2: Long) : CmdModuleParams =
     new CmdModuleParams(
-      soft_reset_rw = 0x0, const1_r = 0x10, const2_r = 0x14,  dut_rw = 0x20,
+      soft_reset_rw = 0x0, const1_r = 0x10, const2_r = 0x20,  dut_rw = 0x30,
       const1 = const1, const2 = const2, reset_cycles = 8
     )
 }

@@ -8,6 +8,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import axi._
 import axi.AxiModuleParamsHelper._
 import axi_examples.TestQModuleParams._
+import scala.util.Random
 
 class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
   val const1 = 0xbeefcafeL
@@ -86,21 +87,39 @@ class Axi4Lite32TestQSpec extends AnyFlatSpec with ChiselSim {
       bfm.expectVal(p.const1_r, const1)
       bfm.expectVal(p.const2_r, const2)
 
-      def testFixPattern() : Unit = {
-        bfm.softReset(p)
-        val rowpxs = List.tabulate(npxs) { i => if (i == 5) threshold + 2 else 0 }
-        for (i <- 0 until nrows) {
-          commitRow(bfm, i, rowpxs)
-        }
+      def checkOutput(nzcnt: Int) : Unit = {
         val inqcnt = bfm.readVal(p.inq_cnt_r)
         assert(inqcnt == nrows)
         startFeed(bfm)
         bfm.expectVal(p.outq_cnt_r, 1)
-        bfm.expectVal(p.outq_r, nrows)
+        bfm.expectVal(p.outq_r, nzcnt)
         bfm.expectVal(p.outq_cnt_r, 0)
       }
 
-      for(i <- 0 until 3)  testFixPattern()
+      def testFixPattern() : Unit = {
+        bfm.softReset(p)
+        var nzcnt = 0
+        for (i <- 0 until nrows) {
+          val rowpxs = List.tabulate(npxs) { j => if ((j%4) == 0 || j<=i) threshold + 2 else 0 }
+          nzcnt += rowpxs.count(_ > 0)
+          commitRow(bfm, i, rowpxs)
+        }
+        checkOutput(nzcnt)
+      }
+
+      def testRndPattern() : Unit = {
+        bfm.softReset(p)
+        var nzcnt = 0
+        for (i <- 0 until nrows) {
+          val rowpxs = List.tabulate(npxs) { j => if (Random.nextBoolean()) threshold + 2 else 0 }
+          nzcnt += rowpxs.count(_ > 0)
+          commitRow(bfm, i, rowpxs)
+        }
+        checkOutput(nzcnt)
+      }
+
+      //for(i <- 0 until 3)  testFixPattern()
+      for(i <- 0 until 10)  testRndPattern()
 
       println("Axi4Lite32TestQ test passed!")
     }
