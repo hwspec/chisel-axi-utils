@@ -40,6 +40,7 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         self.local_stems = local_stems
         self.drop_setup = drop_setup
         self.generated_main = False
+        self._bridge_class_depth: list[bool] = []
 
     def _module_name(self, node: cst.BaseExpression) -> str:
         """Return dotted module name from LibCST Name/Attribute node."""
@@ -158,6 +159,18 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
                 params=cst.Parameters(),
             )
 
+        # Inside a *Bridge subclass, __init__(self, cocotb_dut) drops the
+        # cocotb_dut param, since the FPGA-side bridge takes none.
+        in_bridge_class = (
+            self._bridge_class_depth and self._bridge_class_depth[-1]
+        )
+        if in_bridge_class and updated_node.name.value == "__init__":
+            self_param = updated_node.params.params[0] if updated_node.params.params else None
+            if self_param is not None:
+                self_param = self_param.with_changes(comma=cst.MaybeSentinel.DEFAULT)
+            new_params = cst.Parameters(params=[self_param] if self_param else [])
+            new_node = new_node.with_changes(params=new_params)
+
         return new_node
 
     def _is_cocotb_test_decorator(self, dec: cst.Decorator) -> bool:
@@ -188,11 +201,23 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
     # Class definition: rebase project bridge classes
     # e.g. class R2Bridge(COCOTB_Bridge): -> class R2Bridge(AVED_Bridge):
     # -------------------------
+    def _is_bridge_base(self, base_value: cst.BaseExpression) -> bool:
+        name = self._module_name(base_value)
+        return name == "COCOTB_Bridge" or name.endswith("Bridge")
+
+    def visit_ClassDef(self, node: cst.ClassDef) -> None:
+        is_bridge_class = any(
+            self._is_bridge_base(base.value) for base in node.bases
+        )
+        self._bridge_class_depth.append(is_bridge_class)
+
     def leave_ClassDef(
         self,
         original_node: cst.ClassDef,
         updated_node: cst.ClassDef,
     ) -> cst.ClassDef:
+        self._bridge_class_depth.pop()
+
         new_bases = []
         changed = False
         for base in updated_node.bases:
@@ -228,6 +253,19 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
             # Any project bridge subclass, e.g. R2Bridge(cocotb_dut) -> R2Bridge()
             if name.endswith("Bridge") and name != f"{self.fpga}_Bridge":
                 return updated_node.with_changes(args=[])
+
+        # Inside a *Bridge subclass, super().__init__(cocotb_dut) -> super().__init__()
+        in_bridge_class = (
+            self._bridge_class_depth and self._bridge_class_depth[-1]
+        )
+        if in_bridge_class and m.matches(
+            updated_node.func,
+            m.Attribute(
+                value=m.Call(func=m.Name("super")),
+                attr=m.Name("__init__"),
+            ),
+        ):
+            return updated_node.with_changes(args=[])
 
         return updated_node
 
