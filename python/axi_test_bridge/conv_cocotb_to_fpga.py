@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-
 """
-Convert an AXI cocotb testbench into an FPGA testbench.
+Convert a set of AXI cocotb testbench files into FPGA testbench files.
 
 Usage:
-  python conv_cocotb_to_fpga.py sim_test.py fpga_test.py
+    python conv_cocotb_to_fpga.py tb_filter.py r2bridge.py subtest1.py
 
-To overwrite existing output, use the --force option
+Each input file `foo.py` is written as `fpga_foo.py` (default: same
+directory as input, or --outdir if given). Local imports between files
+in the same batch are rewritten to match (e.g. `from r2bridge import
+R2Bridge` -> `from fpga_r2bridge import R2Bridge`) so the converted
+files import each other correctly.
+
+To overwrite existing output files, use the --force option.
 """
 
 from __future__ import annotations
@@ -17,14 +22,22 @@ from pathlib import Path
 import libcst as cst
 import libcst.matchers as m
 
+
+def fpga_name(stem: str) -> str:
+    """Map a module/file stem to its converted-output equivalent name."""
+    return f"fpga_{stem}"
+
+
 class CocotbToFpgaTransformer(cst.CSTTransformer):
     def __init__(
         self,
         fpga: str,
+        local_stems: frozenset[str] = frozenset(),
         drop_setup: bool = True,
     ):
         self.sim = 'COCOTB'
         self.fpga = fpga
+        self.local_stems = local_stems
         self.drop_setup = drop_setup
         self.generated_main = False
 
@@ -32,36 +45,28 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         """Return dotted module name from LibCST Name/Attribute node."""
         if isinstance(node, cst.Name):
             return node.value
-
         if isinstance(node, cst.Attribute):
             left = self._module_name(node.value)
             return f"{left}.{node.attr.value}"
-
         return ""
 
     # -------------------------
     # Imports
     # -------------------------
-
     def leave_Import(
         self,
         original_node: cst.Import,
         updated_node: cst.Import,
     ) -> cst.Import | cst.RemovalSentinel:
         kept = []
-
         for alias in updated_node.names:
             name = alias.name
-
             # remove: import cocotb
             if isinstance(name, cst.Name) and name.value == "cocotb":
                 continue
-
             kept.append(alias.with_changes(comma=cst.MaybeSentinel.DEFAULT))
-
         if not kept:
             return cst.RemoveFromParent()
-
         return updated_node.with_changes(names=kept)
 
     def leave_ImportFrom(
@@ -79,9 +84,9 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
             return cst.RemoveFromParent()
 
         # e.g.,
-        # from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
+        #   from axi_test_bridge.cocotb_bridge import COCOTB_Bridge
         # ->
-        # from axi_test_bridge.aved_bridge import AVED_Bridge
+        #   from axi_test_bridge.aved_bridge import AVED_Bridge
         if module_code == "axi_test_bridge.cocotb_bridge":
             return updated_node.with_changes(
                 module=cst.Attribute(
@@ -96,26 +101,21 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
                 ],
             )
 
-        # from RevMemSIM import RevMemSIM
+        # Batch-local import rewrite, e.g.
+        #   from r2bridge import R2Bridge
         # ->
-        # from RevMemFPGA import RevMemFPGA
-#        if module_code == self.sim:
-#            return updated_node.with_changes(
-#                module=cst.Name(self.fpga),
-#                names=[
-#                    cst.ImportAlias(
-#                        name=cst.Name(self.fpga),
-#                        comma=cst.MaybeSentinel.DEFAULT,
-#                    )
-#                ],
-#            )
+        #   from fpga_r2bridge import R2Bridge
+        # (also covers helper modules like subtest1.py)
+        if module_code in self.local_stems:
+            return updated_node.with_changes(
+                module=cst.Name(fpga_name(module_code)),
+            )
 
         return updated_node
 
     # -------------------------
     # async / await conversion
     # -------------------------
-
     def leave_Await(
         self,
         original_node: cst.Await,
@@ -129,7 +129,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
     # -------------------------
     # Function conversion
     # -------------------------
-
     def leave_FunctionDef(
         self,
         original_node: cst.FunctionDef,
@@ -137,7 +136,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
     ) -> cst.FunctionDef:
         decorators = []
         is_cocotb_test = False
-
         for dec in updated_node.decorators:
             if self._is_cocotb_test_decorator(dec):
                 is_cocotb_test = True
@@ -152,7 +150,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
 
         if is_cocotb_test:
             self.generated_main = True
-
             # async def sim_simple(dut):
             # ->
             # def main():
@@ -165,7 +162,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
 
     def _is_cocotb_test_decorator(self, dec: cst.Decorator) -> bool:
         expr = dec.decorator
-
         # @cocotb.test
         if m.matches(
             expr,
@@ -175,7 +171,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
             ),
         ):
             return True
-
         # @cocotb.test()
         if m.matches(
             expr,
@@ -187,33 +182,58 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
             ),
         ):
             return True
-
         return False
 
     # -------------------------
-    # Class replacement
+    # Class definition: rebase project bridge classes
+    # e.g. class R2Bridge(COCOTB_Bridge): -> class R2Bridge(AVED_Bridge):
     # -------------------------
+    def leave_ClassDef(
+        self,
+        original_node: cst.ClassDef,
+        updated_node: cst.ClassDef,
+    ) -> cst.ClassDef:
+        new_bases = []
+        changed = False
+        for base in updated_node.bases:
+            if m.matches(base.value, m.Name("COCOTB_Bridge")):
+                new_bases.append(
+                    base.with_changes(value=cst.Name(f"{self.fpga}_Bridge"))
+                )
+                changed = True
+            else:
+                new_bases.append(base)
+        if changed:
+            return updated_node.with_changes(bases=new_bases)
+        return updated_node
 
+    # -------------------------
+    # Class replacement (generalized to any *Bridge subclass call)
+    # -------------------------
     def leave_Call(
         self,
         original_node: cst.Call,
         updated_node: cst.Call,
     ) -> cst.Call:
         if isinstance(updated_node.func, cst.Name):
-            # COCOTB_Bridge(cocotb_dut)
-            # ->
-            # AVED_Bridge()
-            if updated_node.func.value == "COCOTB_Bridge":
+            name = updated_node.func.value
+
+            # COCOTB_Bridge(cocotb_dut) -> AVED_Bridge()
+            if name == "COCOTB_Bridge":
                 return updated_node.with_changes(
                     func=cst.Name(f"{self.fpga}_Bridge"),
                     args=[],
                 )
+
+            # Any project bridge subclass, e.g. R2Bridge(cocotb_dut) -> R2Bridge()
+            if name.endswith("Bridge") and name != f"{self.fpga}_Bridge":
+                return updated_node.with_changes(args=[])
+
         return updated_node
 
     # -------------------------
     # Optional setup removal
     # -------------------------
-
     def leave_SimpleStatementLine(
         self,
         original_node: cst.SimpleStatementLine,
@@ -221,10 +241,8 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
     ) -> cst.SimpleStatementLine | cst.RemovalSentinel:
         if self.drop_setup and len(updated_node.body) == 1:
             stmt = updated_node.body[0]
-
             # Drop:
             #   await rev.setup()
-            #
             # After await-removal, this becomes:
             #   rev.setup()
             if m.matches(
@@ -238,13 +256,11 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
                 ),
             ):
                 return cst.RemoveFromParent()
-
         return updated_node
 
     # -------------------------
     # Add main entry point
     # -------------------------
-
     def leave_Module(
         self,
         original_node: cst.Module,
@@ -259,7 +275,6 @@ if __name__ == "__main__":
     main()
 '''
         )
-
         return updated_node.with_changes(
             body=list(updated_node.body) + [main_block]
         )
@@ -268,71 +283,83 @@ if __name__ == "__main__":
 def convert_code(
     source: str,
     fpga: str,
+    local_stems: frozenset[str] = frozenset(),
     drop_setup: bool = True,
 ) -> str:
     module = cst.parse_module(source)
-
     transformed = module.visit(
         CocotbToFpgaTransformer(
             fpga=fpga,
+            local_stems=local_stems,
             drop_setup=drop_setup,
         )
     )
-
     return transformed.code
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Convert restricted cocotb testbench to FPGA testbench."
+        description="Convert a batch of restricted cocotb testbench files "
+                     "to FPGA testbench files."
     )
-
     parser.add_argument(
-        "input",
+        "inputs",
+        nargs="+",
         type=Path,
-        help="Input cocotb testbench, e.g. sim_test.py",
+        help="Input cocotb files, e.g. tb_filter.py r2bridge.py subtest1.py",
     )
-
     parser.add_argument(
-        "output",
+        "--outdir",
         type=Path,
-        help="Output FPGA testbench, e.g. fpga_test.py",
+        default=None,
+        help="Directory for converted output files "
+             "(default: same directory as each input file).",
     )
-
     parser.add_argument(
         "--fpga",
         default="AVED",
         help="FPGA backend name (default: %(default)s)",
     )
-
     parser.add_argument(
         "--keep-setup",
         action="store_true",
         help="Keep setup() calls instead of removing them.",
     )
-
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Overwrite output file if it already exists.",
+        help="Overwrite output files if they already exist.",
     )
-
     args = parser.parse_args()
 
-    if args.output.exists() and not args.force:
-        raise FileExistsError(
-            f"{args.output} already exists. Use --force to overwrite."
+    # Batch-wide set of local module stems, so local imports between
+    # files in this same invocation get rewritten consistently
+    # (e.g. "r2bridge", "subtest1").
+    local_stems = frozenset(p.stem for p in args.inputs)
+
+    # Resolve output paths up front and check for collisions before
+    # writing anything.
+    output_paths = []
+    for in_path in args.inputs:
+        outdir = args.outdir if args.outdir is not None else in_path.parent
+        out_path = outdir / f"{fpga_name(in_path.stem)}{in_path.suffix}"
+        if out_path.exists() and not args.force:
+            raise FileExistsError(
+                f"{out_path} already exists. Use --force to overwrite."
+            )
+        output_paths.append(out_path)
+
+    for in_path, out_path in zip(args.inputs, output_paths):
+        source = in_path.read_text()
+        converted = convert_code(
+            source=source,
+            fpga=args.fpga,
+            local_stems=local_stems,
+            drop_setup=not args.keep_setup,
         )
-
-    source = args.input.read_text()
-
-    converted = convert_code(
-        source=source,
-        fpga=args.fpga,
-        drop_setup=not args.keep_setup,
-    )
-
-    args.output.write_text(converted)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(converted)
+        print(f"{in_path} -> {out_path}")
 
 
 if __name__ == "__main__":
