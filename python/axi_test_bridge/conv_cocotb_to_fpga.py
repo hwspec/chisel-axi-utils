@@ -165,11 +165,14 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
             self._bridge_class_depth and self._bridge_class_depth[-1]
         )
         if in_bridge_class and updated_node.name.value == "__init__":
-            self_param = updated_node.params.params[0] if updated_node.params.params else None
-            if self_param is not None:
-                self_param = self_param.with_changes(comma=cst.MaybeSentinel.DEFAULT)
-            new_params = cst.Parameters(params=[self_param] if self_param else [])
-            new_node = new_node.with_changes(params=new_params)
+            params = list(updated_node.params.params)
+            if len(params) >= 2:
+                # keep self and all params after cocotb_dut
+                new_params_list = [params[0]] + params[2:]
+                new_params = updated_node.params.with_changes(
+                    params = new_params_list
+                    )
+                new_node =  new_node.with_changes(params=new_params)
 
         return new_node
 
@@ -240,6 +243,17 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         original_node: cst.Call,
         updated_node: cst.Call,
     ) -> cst.Call:
+        def drop_cocotb_dut(args):
+            args = list(args)
+            if (
+                    args
+                    and args[0].keyword is None
+                    and isinstance(args[0].value, cst.Name)
+                    and args[0].value.value == "cocotb_dut"
+            ):
+                return args[1:]
+            return args
+
         if isinstance(updated_node.func, cst.Name):
             name = updated_node.func.value
 
@@ -250,11 +264,13 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
                     args=[],
                 )
 
-            # Any project bridge subclass, e.g. R2Bridge(cocotb_dut) -> R2Bridge()
+            # R2Bridge(cocotb_dut, ...) -> R2Bridge(...)
             if name.endswith("Bridge") and name != f"{self.fpga}_Bridge":
-                return updated_node.with_changes(args=[])
+                return updated_node.with_changes(
+                    args=drop_cocotb_dut(updated_node.args)
+                )
 
-        # Inside a *Bridge subclass, super().__init__(cocotb_dut) -> super().__init__()
+        # Inside a *Bridge subclass, super().__init__(cocotb_dut, ...) -> super().__init__(...)
         in_bridge_class = (
             self._bridge_class_depth and self._bridge_class_depth[-1]
         )
@@ -265,7 +281,9 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
                 attr=m.Name("__init__"),
             ),
         ):
-            return updated_node.with_changes(args=[])
+            return updated_node.with_changes(
+                args=drop_cocotb_dut(updated_node.args)
+            )
 
         return updated_node
 
