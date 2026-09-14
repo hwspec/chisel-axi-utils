@@ -450,7 +450,8 @@ def main() -> None:
             source=source,
             fpga=args.fpga,
             local_stems=local_stems,
-            drop_setup=not args.keep_setup,
+            drop_setup=False,
+#           drop_setup=not args.keep_setup,
         )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(converted)

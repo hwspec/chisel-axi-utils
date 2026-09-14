@@ -78,3 +78,6 @@ class AVED_Bridge:
                 raise RuntimeError("Reached maxloopcnt. Something wrong")
             loopcnt += 1
         return loopcnt
+
+    def setup(self):
+        pass
