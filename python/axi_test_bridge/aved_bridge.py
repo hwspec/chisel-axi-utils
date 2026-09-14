@@ -10,6 +10,8 @@ import logging
 import pyaved
 
 class AVED_Bridge:
+    is_fpga = True
+
     def readAddrMap(self):
         fn = os.getenv("PARAMFN")
         if fn is None:

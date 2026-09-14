@@ -17,6 +17,8 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class COCOTB_Bridge:
+    is_fpga = False
+
     def readParams(self):
         fn = os.getenv("PARAMFN")
         if fn is None:
