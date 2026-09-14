@@ -41,7 +41,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         self.drop_setup = drop_setup
         self.generated_main = False
         self._bridge_class_depth: list[bool] = []
-        self._has_is_fpga_assign = False
 
     def _module_name(self, node: cst.BaseExpression) -> str:
         """Return dotted module name from LibCST Name/Attribute node."""
@@ -113,22 +112,6 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
                 module=cst.Name(fpga_name(module_code)),
             )
 
-        return updated_node
-
-    # -------------------------
-    # IS_FPGA flag
-    # -------------------------
-    def leave_Assign(
-        self,
-        original_node: cst.Assign,
-        updated_node: cst.Assign,
-    ) -> cst.Assign:
-        # IS_FPGA = False  ->  IS_FPGA = True  (in the FPGA-side file)
-        if len(updated_node.targets) == 1 and m.matches(
-            updated_node.targets[0].target, m.Name("IS_FPGA")
-        ):
-            self._has_is_fpga_assign = True
-            return updated_node.with_changes(value=cst.Name("True"))
         return updated_node
 
     # -------------------------
@@ -339,40 +322,18 @@ class CocotbToFpgaTransformer(cst.CSTTransformer):
         original_node: cst.Module,
         updated_node: cst.Module,
     ) -> cst.Module:
-        body = list(updated_node.body)
+        if not self.generated_main:
+            return updated_node
 
-        # If the source never defined IS_FPGA itself, insert
-        #   IS_FPGA = True
-        # right after the leading import block, so FPGA-only guards
-        # (e.g. `if IS_FPGA: await rev.zero_fill_memory()`) are always
-        # well-defined in the generated file.
-        if not self._has_is_fpga_assign:
-            flag_stmt = cst.parse_statement("IS_FPGA = True\n")
-            insert_at = 0
-            for i, stmt in enumerate(body):
-                if m.matches(
-                    stmt,
-                    m.SimpleStatementLine(
-                        body=[m.Import() | m.ImportFrom()]
-                    ),
-                ):
-                    insert_at = i + 1
-                else:
-                    break
-            body = body[:insert_at] + [flag_stmt] + body[insert_at:]
-
-        if self.generated_main:
-            main_block = cst.parse_statement(
-                '''
+        main_block = cst.parse_statement(
+            '''
 if __name__ == "__main__":
     main()
 '''
-            )
-            body = body + [main_block]
-
-        if body == list(updated_node.body):
-            return updated_node
-        return updated_node.with_changes(body=body)
+        )
+        return updated_node.with_changes(
+            body=list(updated_node.body) + [main_block]
+        )
 
 
 def convert_code(
