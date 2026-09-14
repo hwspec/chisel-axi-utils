@@ -5,3 +5,5 @@ cocotbext-axi==0.1.26
 libcst==1.8.6
 numpy==2.0.2
 pytest==8.4.2
+tomli==2.2.1
+
